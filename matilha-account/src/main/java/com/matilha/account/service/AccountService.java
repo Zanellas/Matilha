@@ -1,9 +1,9 @@
 package com.matilha.account.service;
 
 import java.security.SecureRandom;
-import java.util.List;
 
-import org.jspecify.annotations.Nullable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,8 +47,8 @@ public class AccountService {
     }
 
     @Transactional(readOnly = true)
-    public List<AccountResponseDto> findAll() {
-        return accountRepository.findAll().stream().map(this::toResponse).toList();
+    public Page<AccountResponseDto> findAll(Pageable pageable) {
+        return accountRepository.findAll(pageable).map(this::toResponse);
     }
 
     private AccountResponseDto toResponse(Account account) {
