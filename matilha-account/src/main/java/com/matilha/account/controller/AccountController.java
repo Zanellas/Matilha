@@ -4,7 +4,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.matilha.account.dto.AccountResponseDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
+import com.matilha.account.dto.UpdateAccountRequestDto;
 import com.matilha.account.service.AccountService;
 
 import jakarta.validation.Valid;
@@ -41,4 +44,14 @@ public class AccountController {
         return ResponseEntity.ok(new PagedModel<>(accountService.findAll(pageable)));
     }
 
+    @PatchMapping("/{accountNumber}")
+    public ResponseEntity<AccountResponseDto> update(@PathVariable String accountNumber, @RequestBody @Valid UpdateAccountRequestDto request) {
+        return ResponseEntity.ok(accountService.update(accountNumber, request));
+    }
+
+    @DeleteMapping("/{accountNumber}")
+    public ResponseEntity<Void> close(@PathVariable String accountNumber) {
+        accountService.close(accountNumber);
+        return ResponseEntity.noContent().build();
+    }
 }

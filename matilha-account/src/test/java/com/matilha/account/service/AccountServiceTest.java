@@ -23,6 +23,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+
 import com.matilha.account.dto.AccountResponseDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
 import com.matilha.account.entity.Account;
@@ -40,10 +41,15 @@ class AccountServiceTest {
     @InjectMocks
     private AccountService accountService;
 
+    private static Account newAccount(String accountNumber, String holderName) {
+        return new Account(accountNumber, holderName, "52998224725", "ana.silva@example.com", "11987654321");
+    }
+
     @Nested
     class Create {
 
-        private final CreateAccountRequestDto request = new CreateAccountRequestDto("Ana Silva", "12345678900");
+        private final CreateAccountRequestDto request = new CreateAccountRequestDto(
+                "Ana Silva", "529.982.247-25", "Ana.Silva@Example.com", "(11) 98765-4321");
 
         @Test
         void shouldSaveNewActiveAccountAndReturnResponse() {
@@ -57,13 +63,28 @@ class AccountServiceTest {
             Account saved = captor.getValue();
 
             assertThat(saved.getHolderName()).isEqualTo("Ana Silva");
-            assertThat(saved.getHolderDocument()).isEqualTo("12345678900");
             assertThat(saved.getStatus()).isEqualTo(Status.ACTIVE);
             assertThat(saved.getBalance()).isEqualByComparingTo("0.00");
 
             assertThat(response.accountNumber()).isEqualTo(saved.getAccountNumber());
             assertThat(response.holderName()).isEqualTo("Ana Silva");
             assertThat(response.status()).isEqualTo(Status.ACTIVE);
+        }
+
+        @Test
+        void shouldSaveContactDataNormalized() {
+            when(accountRepository.existsByAccountNumber(anyString())).thenReturn(false);
+            when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            accountService.create(request);
+
+            ArgumentCaptor<Account> captor = ArgumentCaptor.forClass(Account.class);
+            verify(accountRepository).save(captor.capture());
+            Account saved = captor.getValue();
+
+            assertThat(saved.getHolderDocument()).isEqualTo("52998224725");
+            assertThat(saved.getHolderEmail()).isEqualTo("ana.silva@example.com");
+            assertThat(saved.getHolderPhone()).isEqualTo("11987654321");
         }
 
         @Test
@@ -91,7 +112,8 @@ class AccountServiceTest {
         @Test
         void shouldNotSaveWhenRequestIsInvalid() {
             when(accountRepository.existsByAccountNumber(anyString())).thenReturn(false);
-            CreateAccountRequestDto invalidRequest = new CreateAccountRequestDto(" ", "12345678900");
+            CreateAccountRequestDto invalidRequest = new CreateAccountRequestDto(
+                    " ", "52998224725", "ana.silva@example.com", "11987654321");
 
             assertThatThrownBy(() -> accountService.create(invalidRequest))
                     .isInstanceOf(BusinessException.class)
@@ -105,8 +127,8 @@ class AccountServiceTest {
 
         @Test
         void shouldReturnAccountWhenFound() {
-            Account account = new Account("12345", "Ana Silva", "12345678900");
-            when(accountRepository.findByAccountNumber("12345")).thenReturn(Optional.of(account));
+            when(accountRepository.findByAccountNumber("12345"))
+                    .thenReturn(Optional.of(newAccount("12345", "Ana Silva")));
 
             AccountResponseDto response = accountService.findByAccountNumber("12345");
 
@@ -130,8 +152,8 @@ class AccountServiceTest {
         void shouldReturnPageOfResponses() {
             Pageable pageable = PageRequest.of(0, 2);
             List<Account> accounts = List.of(
-                    new Account("11111", "Ana Silva", "11111111111"),
-                    new Account("22222", "Bruno Costa", "22222222222"));
+                    newAccount("11111", "Ana Silva"),
+                    newAccount("22222", "Bruno Costa"));
             when(accountRepository.findAll(pageable)).thenReturn(new PageImpl<>(accounts, pageable, 5));
 
             Page<AccountResponseDto> page = accountService.findAll(pageable);
