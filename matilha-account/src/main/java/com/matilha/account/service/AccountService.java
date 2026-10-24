@@ -4,14 +4,13 @@ import java.security.SecureRandom;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import com.matilha.account.dto.AccountResponseDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
 import com.matilha.account.entity.Account;
+import com.matilha.account.exception.AccountNotFoundException;
 import com.matilha.account.repository.AccountRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -42,7 +41,7 @@ public class AccountService {
     @Transactional(readOnly = true)
     public AccountResponseDto findByAccountNumber(String accountNumber) {
         Account account = accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+                .orElseThrow(() -> new AccountNotFoundException(accountNumber));
         return toResponse(account);
     }
 

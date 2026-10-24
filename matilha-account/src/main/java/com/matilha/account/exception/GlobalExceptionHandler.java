@@ -34,7 +34,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ProblemDetail handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "The account was modified by another request. Please try again.");
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "The account was modified by another request. Please try again.");
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
