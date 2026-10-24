@@ -28,6 +28,7 @@ import com.matilha.account.dto.TransferRequestDto;
 import com.matilha.account.dto.TransferResponseDto;
 import com.matilha.account.entity.Account;
 import com.matilha.account.entity.AccountMovement;
+import com.matilha.account.entity.MovementOperation;
 import com.matilha.account.entity.MovementType;
 import com.matilha.account.exception.AccountNotFoundException;
 import com.matilha.account.exception.BusinessException;
@@ -64,7 +65,7 @@ class TransferServiceTest {
     }
 
     private void givenNewTransfer() {
-        when(accountMovementRepository.findByTransferId(TRANSFER_ID)).thenReturn(List.of());
+        when(accountMovementRepository.findByOperationIdAndOperation(TRANSFER_ID, MovementOperation.TRANSFER)).thenReturn(List.of());
     }
 
     private void givenLockedAccounts(Account... accounts) {
@@ -111,15 +112,17 @@ class TransferServiceTest {
 
             AccountMovement debit = movements.get(0);
             assertThat(debit.getType()).isEqualTo(MovementType.DEBIT);
+            assertThat(debit.getOperation()).isEqualTo(MovementOperation.TRANSFER);
             assertThat(debit.getAccount()).isSameAs(source);
-            assertThat(debit.getTransferId()).isEqualTo(TRANSFER_ID);
+            assertThat(debit.getOperationId()).isEqualTo(TRANSFER_ID);
             assertThat(debit.getAmount()).isEqualByComparingTo("150.00");
             assertThat(debit.getBalanceAfter()).isEqualByComparingTo("350.00");
 
             AccountMovement credit = movements.get(1);
             assertThat(credit.getType()).isEqualTo(MovementType.CREDIT);
+            assertThat(credit.getOperation()).isEqualTo(MovementOperation.TRANSFER);
             assertThat(credit.getAccount()).isSameAs(target);
-            assertThat(credit.getTransferId()).isEqualTo(TRANSFER_ID);
+            assertThat(credit.getOperationId()).isEqualTo(TRANSFER_ID);
             assertThat(credit.getAmount()).isEqualByComparingTo("150.00");
             assertThat(credit.getBalanceAfter()).isEqualByComparingTo("250.00");
         }
@@ -197,9 +200,9 @@ class TransferServiceTest {
             Account source = accountWithBalance(SOURCE, "350.00");
             Account target = accountWithBalance(TARGET, "250.00");
             BigDecimal amount = new BigDecimal("150.00");
-            when(accountMovementRepository.findByTransferId(TRANSFER_ID)).thenReturn(List.of(
-                    AccountMovement.debit(source, TRANSFER_ID, amount),
-                    AccountMovement.credit(target, TRANSFER_ID, amount)));
+            when(accountMovementRepository.findByOperationIdAndOperation(TRANSFER_ID, MovementOperation.TRANSFER)).thenReturn(List.of(
+                    AccountMovement.transferDebit(source, TRANSFER_ID, amount),
+                    AccountMovement.transferCredit(target, TRANSFER_ID, amount)));
 
             TransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150.00"));
 
@@ -212,9 +215,9 @@ class TransferServiceTest {
             Account source = accountWithBalance(SOURCE, "350.00");
             Account target = accountWithBalance(TARGET, "250.00");
             BigDecimal amount = new BigDecimal("150.00");
-            when(accountMovementRepository.findByTransferId(TRANSFER_ID)).thenReturn(List.of(
-                    AccountMovement.credit(target, TRANSFER_ID, amount),
-                    AccountMovement.debit(source, TRANSFER_ID, amount)));
+            when(accountMovementRepository.findByOperationIdAndOperation(TRANSFER_ID, MovementOperation.TRANSFER)).thenReturn(List.of(
+                    AccountMovement.transferCredit(target, TRANSFER_ID, amount),
+                    AccountMovement.transferDebit(source, TRANSFER_ID, amount)));
 
             transferService.transfer(request(SOURCE, TARGET, "150.00"));
 

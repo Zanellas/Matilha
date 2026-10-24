@@ -27,8 +27,9 @@ import lombok.ToString;
 @Getter
 @ToString
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(name = "account_movements", uniqueConstraints = @UniqueConstraint(name = "uk_account_movements_transfer_type", columnNames = {
-        "transfer_id", "type" }))
+@Table(name = "account_movements", uniqueConstraints = @UniqueConstraint(
+        name = "uk_account_movements_operation_type",
+        columnNames = { "operation_id", "type" }))
 public class AccountMovement {
 
     @Id
@@ -40,12 +41,16 @@ public class AccountMovement {
     @JoinColumn(name = "account_id", nullable = false, updatable = false)
     private Account account;
 
-    @Column(name = "transfer_id", nullable = false, updatable = false)
-    private UUID transferId;
+    @Column(name = "operation_id", nullable = false, updatable = false)
+    private UUID operationId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, updatable = false, length = 6)
     private MovementType type;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, updatable = false, length = 10)
+    private MovementOperation operation;
 
     @Column(nullable = false, updatable = false, precision = 19, scale = 2)
     private BigDecimal amount;
@@ -57,19 +62,25 @@ public class AccountMovement {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    private AccountMovement(Account account, UUID transferId, MovementType type, BigDecimal amount) {
+    private AccountMovement(Account account, UUID operationId, MovementType type,
+            MovementOperation operation, BigDecimal amount) {
         this.account = account;
-        this.transferId = transferId;
+        this.operationId = operationId;
         this.type = type;
+        this.operation = operation;
         this.amount = amount;
         this.balanceAfter = account.getBalance();
     }
 
-    public static AccountMovement debit(Account account, UUID transferId, BigDecimal amount) {
-        return new AccountMovement(account, transferId, MovementType.DEBIT, amount);
+    public static AccountMovement transferDebit(Account account, UUID transferId, BigDecimal amount) {
+        return new AccountMovement(account, transferId, MovementType.DEBIT, MovementOperation.TRANSFER, amount);
     }
 
-    public static AccountMovement credit(Account account, UUID transferId, BigDecimal amount) {
-        return new AccountMovement(account, transferId, MovementType.CREDIT, amount);
+    public static AccountMovement transferCredit(Account account, UUID transferId, BigDecimal amount) {
+        return new AccountMovement(account, transferId, MovementType.CREDIT, MovementOperation.TRANSFER, amount);
+    }
+
+    public static AccountMovement deposit(Account account, UUID depositId, BigDecimal amount) {
+        return new AccountMovement(account, depositId, MovementType.CREDIT, MovementOperation.DEPOSIT, amount);
     }
 }
