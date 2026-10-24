@@ -1,3 +1,17 @@
 spring:
   application:
     name: matilha-account
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/matilha_account}
+    username: ${DB_USERNAME_MATILHA:matilha}
+    password: ${DB_PASSWORD_MATILHA:matilha}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
