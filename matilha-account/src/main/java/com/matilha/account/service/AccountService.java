@@ -1,7 +1,9 @@
 package com.matilha.account.service;
 
 import java.security.SecureRandom;
+import java.util.List;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class AccountService {
-    
+
     private final AccountRepository accountRepository;
 
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -28,7 +30,6 @@ public class AccountService {
         Account saved = accountRepository.save(account);
         return toResponse(saved);
     }
-
 
     private String generateUniqueAccountNumber() {
         String number;
@@ -41,8 +42,13 @@ public class AccountService {
     @Transactional(readOnly = true)
     public AccountResponseDto findByAccountNumber(String accountNumber) {
         Account account = accountRepository.findByAccountNumber(accountNumber)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
         return toResponse(account);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AccountResponseDto> findAll() {
+        return accountRepository.findAll().stream().map(this::toResponse).toList();
     }
 
     private AccountResponseDto toResponse(Account account) {

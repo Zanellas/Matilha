@@ -3,9 +3,9 @@ services:
     image: postgres:17
     container_name: matilha-postgres
     environment:
-      POSTGRES_DB_MATILHA: matilha_account
-      POSTGRES_USER_MATILHA: matilha
-      POSTGRES_PASSWORD_MATILHA: matilha
+      POSTGRES_DB: matilha_account
+      POSTGRES_USER: matilha
+      POSTGRES_PASSWORD: matilha
     ports:
       - "5432:5432"
     volumes:
