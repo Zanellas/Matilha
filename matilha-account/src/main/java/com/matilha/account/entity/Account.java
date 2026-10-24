@@ -7,6 +7,8 @@ import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import com.matilha.account.exception.BusinessException;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -81,53 +83,53 @@ public class Account {
         validateAmount(amount);
         requireActive();
         if (balance.compareTo(amount) < 0) {
-            throw new IllegalStateException("Insufficient balance");
+            throw new BusinessException("Insufficient balance");
         }
         this.balance = this.balance.subtract(amount);
     }
 
     public void block() {
         if (status != Status.ACTIVE) {
-            throw new IllegalStateException("Only active accounts can be blocked");
+            throw new BusinessException("Only active accounts can be blocked");
         }
         this.status = Status.BLOCKED;
     }
 
     public void unblock() {
         if (status != Status.BLOCKED) {
-            throw new IllegalStateException("Only blocked accounts can be unblocked");
+            throw new BusinessException("Only blocked accounts can be unblocked");
         }
         this.status = Status.ACTIVE;
     }
 
     public void close() {
         if (status == Status.CLOSED) {
-            throw new IllegalStateException("Account is already closed");
+            throw new BusinessException("Account is already closed");
         }
         if (balance.signum() != 0) {
-            throw new IllegalStateException("Account balance must be zero to close");
+            throw new BusinessException("Account balance must be zero to close");
         }
         this.status = Status.CLOSED;
     }
 
     private void requireActive() {
         if (status != Status.ACTIVE) {
-            throw new IllegalStateException("Account is not active");
+            throw new BusinessException("Account is not active");
         }
     }
 
     private static void validateAmount(BigDecimal amount) {
         if (amount == null || amount.signum() <= 0) {
-            throw new IllegalArgumentException("Amount must be positive");
+            throw new BusinessException("Amount must be positive");
         }
         if (amount.stripTrailingZeros().scale() > MONEY_SCALE) {
-            throw new IllegalArgumentException("Amount must have at most " + MONEY_SCALE + " decimal places");
+            throw new BusinessException("Amount must have at most " + MONEY_SCALE + " decimal places");
         }
     }
 
     private static String requireNotBlank(String value, String field) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " must not be blank");
+            throw new BusinessException(field + " must not be blank");
         }
         return value;
     }
