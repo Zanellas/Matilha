@@ -1,10 +1,10 @@
 package com.matilha.account.dto;
 
-import com.matilha.account.entity.Status;
+import com.matilha.account.entity.AccountStatus;
 
 public record AccountSummaryDto(
     String accountNumber,
     String holderName,
-    Status staus
+    AccountStatus status
 ) {
 }

@@ -57,14 +57,14 @@ public class AccountController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{accountNummber}/block")
+    @PostMapping("/{accountNumber}/block")
     public ResponseEntity<AccountResponseDto> block(@PathVariable String accountNumber) {
         return ResponseEntity.ok(accountService.block(accountNumber));
     }
 
-    @PostMapping("/{accountNummber}/unblock")
+    @PostMapping("/{accountNumber}/unblock")
     public ResponseEntity<AccountResponseDto> unblock(@PathVariable String accountNumber) {
-        return ResponseEntity.ok(accountService.block(accountNumber));
+        return ResponseEntity.ok(accountService.unblock(accountNumber));
     }
 
 }

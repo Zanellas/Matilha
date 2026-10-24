@@ -88,7 +88,7 @@ public class AccountService {
     }
 
     @Transactional
-    public AccountResponseDto unBlock(String accountNumber) {
+    public AccountResponseDto unblock(String accountNumber) {
         Account account = findAccountOrThrow(accountNumber);
         account.unblock();
         return toResponse(account);
