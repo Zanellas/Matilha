@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.matilha.account.dto.AccountResponseDto;
+import com.matilha.account.dto.AccountSummaryDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
 import com.matilha.account.dto.UpdateAccountRequestDto;
 import com.matilha.account.service.AccountService;
@@ -40,12 +41,13 @@ public class AccountController {
     }
 
     @GetMapping
-    public ResponseEntity<PagedModel<AccountResponseDto>> findAll(Pageable pageable) {
+    public ResponseEntity<PagedModel<AccountSummaryDto>> findAll(Pageable pageable) {
         return ResponseEntity.ok(new PagedModel<>(accountService.findAll(pageable)));
     }
 
     @PatchMapping("/{accountNumber}")
-    public ResponseEntity<AccountResponseDto> update(@PathVariable String accountNumber, @RequestBody @Valid UpdateAccountRequestDto request) {
+    public ResponseEntity<AccountResponseDto> update(@PathVariable String accountNumber,
+            @RequestBody @Valid UpdateAccountRequestDto request) {
         return ResponseEntity.ok(accountService.update(accountNumber, request));
     }
 
@@ -54,4 +56,15 @@ public class AccountController {
         accountService.close(accountNumber);
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/{accountNummber}/block")
+    public ResponseEntity<AccountResponseDto> block(@PathVariable String accountNumber) {
+        return ResponseEntity.ok(accountService.block(accountNumber));
+    }
+
+    @PostMapping("/{accountNummber}/unblock")
+    public ResponseEntity<AccountResponseDto> unblock(@PathVariable String accountNumber) {
+        return ResponseEntity.ok(accountService.block(accountNumber));
+    }
+
 }
