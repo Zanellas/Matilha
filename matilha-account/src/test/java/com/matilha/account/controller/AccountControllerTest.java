@@ -17,6 +17,8 @@ import java.util.List;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -46,22 +48,48 @@ class AccountControllerTest {
     @Nested
     class Create {
 
+        private static final String VALID_REQUEST = """
+                {
+                  "holderName": "Ana Silva",
+                  "holderDocument": "529.982.247-25",
+                  "holderEmail": "ana.silva@example.com",
+                  "holderPhone": "(11) 98765-4321"
+                }
+                """;
+
+        private static String requestWith(String field, String value) {
+            return VALID_REQUEST.replaceFirst("\"" + field + "\": \"[^\"]*\"", "\"" + field + "\": \"" + value + "\"");
+        }
+
         @Test
         void shouldReturnCreatedWithAccount() throws Exception {
-            CreateAccountRequestDto request = new CreateAccountRequestDto("Ana Silva", "12345678900");
+            CreateAccountRequestDto request = new CreateAccountRequestDto(
+                    "Ana Silva", "529.982.247-25", "ana.silva@example.com", "(11) 98765-4321");
             when(accountService.create(request))
                     .thenReturn(new AccountResponseDto("12345", "Ana Silva", Status.ACTIVE));
 
             mockMvc.perform(post("/accounts")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""
-                            {"holderName": "Ana Silva", "holderDocument": "12345678900"}
-                            """))
+                    .content(VALID_REQUEST))
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.accountNumber").value("12345"))
                     .andExpect(jsonPath("$.holderName").value("Ana Silva"))
                     .andExpect(jsonPath("$.status").value("ACTIVE"))
-                    .andExpect(jsonPath("$.holderDocument").doesNotExist());
+                    .andExpect(jsonPath("$.holderDocument").doesNotExist())
+                    .andExpect(jsonPath("$.holderEmail").doesNotExist())
+                    .andExpect(jsonPath("$.holderPhone").doesNotExist());
+        }
+
+        @Test
+        void shouldAcceptUnformattedCpfAndPhone() throws Exception {
+            when(accountService.create(any()))
+                    .thenReturn(new AccountResponseDto("12345", "Ana Silva", Status.ACTIVE));
+
+            mockMvc.perform(post("/accounts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestWith("holderDocument", "52998224725")
+                            .replace("(11) 98765-4321", "11987654321")))
+                    .andExpect(status().isCreated());
         }
 
         @Test
@@ -69,13 +97,15 @@ class AccountControllerTest {
             mockMvc.perform(post("/accounts")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""
-                            {"holderName": "", "holderDocument": " "}
+                            {"holderName": "", "holderDocument": " ", "holderEmail": "", "holderPhone": " "}
                             """))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.status").value(400))
                     .andExpect(jsonPath("$.detail").value("Invalid request"))
                     .andExpect(jsonPath("$.errors.holderName").exists())
-                    .andExpect(jsonPath("$.errors.holderDocument").exists());
+                    .andExpect(jsonPath("$.errors.holderDocument").exists())
+                    .andExpect(jsonPath("$.errors.holderEmail").exists())
+                    .andExpect(jsonPath("$.errors.holderPhone").exists());
 
             verify(accountService, never()).create(any());
         }
@@ -87,7 +117,45 @@ class AccountControllerTest {
                     .content("{}"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.holderName").exists())
+                    .andExpect(jsonPath("$.errors.holderDocument").exists())
+                    .andExpect(jsonPath("$.errors.holderEmail").exists())
+                    .andExpect(jsonPath("$.errors.holderPhone").exists());
+
+            verify(accountService, never()).create(any());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = { "529.982.247-26", "111.111.111-11", "12345678900", "529982247-25" })
+        void shouldReturnBadRequestWhenCpfIsInvalid(String cpf) throws Exception {
+            mockMvc.perform(post("/accounts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestWith("holderDocument", cpf)))
+                    .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.holderDocument").exists());
+
+            verify(accountService, never()).create(any());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = { "ana.silva", "ana@", "@example.com" })
+        void shouldReturnBadRequestWhenEmailIsInvalid(String email) throws Exception {
+            mockMvc.perform(post("/accounts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestWith("holderEmail", email)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors.holderEmail").exists());
+
+            verify(accountService, never()).create(any());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = { "98765-4321", "(11) 98765-43210", "abc", "+55 11 98765-4321" })
+        void shouldReturnBadRequestWhenPhoneIsInvalid(String phone) throws Exception {
+            mockMvc.perform(post("/accounts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestWith("holderPhone", phone)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors.holderPhone").exists());
 
             verify(accountService, never()).create(any());
         }

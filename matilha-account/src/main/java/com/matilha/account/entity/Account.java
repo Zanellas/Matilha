@@ -43,8 +43,16 @@ public class Account {
     private String holderName;
 
     @ToString.Exclude
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false, updatable = false, length = 11)
     private String holderDocument;
+
+    @ToString.Exclude
+    @Column(nullable = false, length = 254)
+    private String holderEmail;
+
+    @ToString.Exclude
+    @Column(nullable = false, length = 11)
+    private String holderPhone;
 
     @Column(precision = 19, scale = MONEY_SCALE, nullable = false)
     private BigDecimal balance;
@@ -65,10 +73,13 @@ public class Account {
     @Version
     private Long version;
 
-    public Account(String accountNumber, String holderName, String holderDocument) {
+    public Account(String accountNumber, String holderName, String holderDocument, String holderEmail,
+            String holderPhone) {
         this.accountNumber = requireNotBlank(accountNumber, "accountNumber");
         this.holderName = requireNotBlank(holderName, "holderName");
-        this.holderDocument = requireNotBlank(holderDocument, "holderDocument");
+        this.holderDocument = normalizeDocument(holderDocument);
+        this.holderEmail = normalizeEmail(holderEmail);
+        this.holderPhone = normalizePhone(holderPhone);
         this.balance = BigDecimal.ZERO.setScale(MONEY_SCALE);
         this.status = Status.ACTIVE;
     }
@@ -133,4 +144,38 @@ public class Account {
         }
         return value;
     }
+
+    private static String normalizeEmail(String holderEmail) {
+        return requireNotBlank(holderEmail, "holderEmail").trim().toLowerCase();
+    }
+
+    private static String normalizePhone(String holderPhone) {
+        String digits = requireNotBlank(holderPhone, "holderPhone").replaceAll("\\D", "");
+        if (digits.length() < 10 || digits.length() > 11) {
+            throw new BusinessException("holderPhone must have 10 or 11 digits");
+        }
+        return digits;
+    }
+
+    private static String normalizeDocument(String document) {
+        String digits = requireNotBlank(document, "holderDocument").replaceAll("\\D", "");
+        if (digits.length() != 11) {
+            throw new BusinessException("holderDocument must have 11 digits");
+        }
+        return digits;
+    }
+
+    public void updateHolderData(String holderName, String holderEmail, String holderPhone) {
+        if (status == Status.CLOSED) {
+            throw new BusinessException("Closed accounts cannot be updated");
+        }
+        String newName = holderName != null ? requireNotBlank(holderName, "holderName") : this.holderName;
+        String newEmail = holderEmail != null ? normalizeEmail(holderEmail) : this.holderEmail;
+        String newPhone = holderPhone != null ? normalizePhone(holderPhone) : this.holderPhone;
+
+        this.holderName = newName;
+        this.holderEmail = newEmail;
+        this.holderPhone = newPhone;
+    }
+
 }
