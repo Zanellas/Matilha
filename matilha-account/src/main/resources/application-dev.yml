@@ -1,0 +1,23 @@
+spring:
+  config:
+    import: optional:file:.env[.properties]
+
+  flyway:
+    locations: classpath:db/migration, classpath:db/seed
+
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        "[format_sql]": true
+
+management:
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

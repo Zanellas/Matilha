@@ -32,10 +32,22 @@ build/
 ### VS Code ###
 .vscode/
 
-### Environment ###
+### Environment / secrets ###
 .env
 .env.*
 !.env.example
+application-local.yml
+application-local.yaml
+application-local.properties
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+secrets/
+.vault-token
 
 ### Logs ###
 *.log
