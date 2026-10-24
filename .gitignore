@@ -1,0 +1,37 @@
+# Regras do monorepo inteiro. Cada serviço tem também o próprio .gitignore.
+
+### Environment / secrets ###
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+secrets/
+.vault-token
+
+### Kubernetes ###
+# Secrets reais nunca vão para o Git. Use Vault, Sealed Secrets ou External Secrets.
+**/k8s/**/*secret*.yaml
+**/k8s/**/*secret*.yml
+!**/k8s/**/*secret*.example.yaml
+!**/k8s/**/*secret*.example.yml
+kubeconfig
+*.kubeconfig
+
+### Keycloak ###
+# Exports do realm podem conter client secrets e usuários.
+**/keycloak/**/*-users-*.json
+
+### Logs ###
+*.log
+logs/
+
+### OS ###
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,37 @@
+name: matilha-account CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['matilha-account/**', '.github/workflows/account-ci.yml']
+  pull_request:
+    paths: ['matilha-account/**', '.github/workflows/account-ci.yml']
+
+defaults:
+  run:
+    working-directory: matilha-account
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: matilha-account/pom.xml
+
+      - name: Testes
+        run: ./mvnw -B verify
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build da imagem
+        run: docker build -t matilha-account .
