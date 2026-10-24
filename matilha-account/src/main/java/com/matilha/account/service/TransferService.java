@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.matilha.account.dto.TransferRequestDto;
 import com.matilha.account.dto.TransferResponseDto;
@@ -15,7 +16,6 @@ import com.matilha.account.exception.BusinessException;
 import com.matilha.account.repository.AccountMovementRepository;
 import com.matilha.account.repository.AccountRepository;
 
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 
 @Service
