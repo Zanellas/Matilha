@@ -1,7 +1,7 @@
 package com.matilha.account.controller;
 
-import java.util.List;
-
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @RequestMapping("/accounts")
 public class AccountController {
-    
+
     private final AccountService accountService;
 
     @PostMapping
@@ -37,9 +37,8 @@ public class AccountController {
     }
 
     @GetMapping
-    public ResponseEntity<List<AccountResponseDto>> findAll() {
-        return ResponseEntity.ok(accountService.findAll());
+    public ResponseEntity<PagedModel<AccountResponseDto>> findAll(Pageable pageable) {
+        return ResponseEntity.ok(new PagedModel<>(accountService.findAll(pageable)));
     }
-
 
 }
