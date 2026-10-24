@@ -1,5 +1,7 @@
 package com.matilha.account.controller;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,5 +35,11 @@ public class AccountController {
     public ResponseEntity<AccountResponseDto> findByAccountNumber(@PathVariable String accountNumber) {
         return ResponseEntity.ok(accountService.findByAccountNumber(accountNumber));
     }
+
+    @GetMapping
+    public ResponseEntity<List<AccountResponseDto>> findAll() {
+        return ResponseEntity.ok(accountService.findAll());
+    }
+
 
 }
