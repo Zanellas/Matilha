@@ -10,6 +10,24 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matilha -d matilha_account"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
+  account:
+    build: .
+    container_name: matilha-account
+    ports:
+      - "8081:8081"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/matilha_account
+      DB_USERNAME_MATILHA: matilha
+      DB_PASSWORD_MATILHA: matilha
+    depends_on:
+      postgres:
+        condition: service_healthy
 volumes:
   postgres-data:
+

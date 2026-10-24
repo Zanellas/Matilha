@@ -1,6 +1,6 @@
 package com.matilha.account.entity;
 
-public enum Status {
+public enum AccountStatus {
     ACTIVE, BLOCKED, CLOSED
 
 }

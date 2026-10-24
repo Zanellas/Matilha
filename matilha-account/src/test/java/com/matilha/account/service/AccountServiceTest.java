@@ -29,7 +29,7 @@ import com.matilha.account.dto.AccountResponseDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
 import com.matilha.account.dto.UpdateAccountRequestDto;
 import com.matilha.account.entity.Account;
-import com.matilha.account.entity.Status;
+import com.matilha.account.entity.AccountStatus;
 import com.matilha.account.exception.AccountNotFoundException;
 import com.matilha.account.exception.BusinessException;
 import com.matilha.account.repository.AccountRepository;
@@ -51,7 +51,7 @@ class AccountServiceTest {
         return new Account(accountNumber, holderName, "52998224725", EMAIL, PHONE);
     }
 
-    private static AccountResponseDto responseFor(String accountNumber, String holderName, Status status) {
+    private static AccountResponseDto responseFor(String accountNumber, String holderName, AccountStatus status) {
         return new AccountResponseDto(accountNumber, holderName, PHONE, EMAIL, status, ZERO);
     }
 
@@ -73,10 +73,10 @@ class AccountServiceTest {
             Account saved = captor.getValue();
 
             assertThat(saved.getHolderName()).isEqualTo("Ana Silva");
-            assertThat(saved.getStatus()).isEqualTo(Status.ACTIVE);
+            assertThat(saved.getStatus()).isEqualTo(AccountStatus.ACTIVE);
             assertThat(saved.getBalance()).isEqualByComparingTo("0.00");
 
-            assertThat(response).isEqualTo(responseFor(saved.getAccountNumber(), "Ana Silva", Status.ACTIVE));
+            assertThat(response).isEqualTo(responseFor(saved.getAccountNumber(), "Ana Silva", AccountStatus.ACTIVE));
         }
 
         @Test
@@ -139,7 +139,7 @@ class AccountServiceTest {
 
             AccountResponseDto response = accountService.findByAccountNumber("12345");
 
-            assertThat(response).isEqualTo(responseFor("12345", "Ana Silva", Status.ACTIVE));
+            assertThat(response).isEqualTo(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
         }
 
         @Test
@@ -166,8 +166,8 @@ class AccountServiceTest {
             Page<AccountResponseDto> page = accountService.findAll(pageable);
 
             assertThat(page.getContent()).containsExactly(
-                    responseFor("11111", "Ana Silva", Status.ACTIVE),
-                    responseFor("22222", "Bruno Costa", Status.ACTIVE));
+                    responseFor("11111", "Ana Silva", AccountStatus.ACTIVE),
+                    responseFor("22222", "Bruno Costa", AccountStatus.ACTIVE));
             assertThat(page.getTotalElements()).isEqualTo(5);
             assertThat(page.getTotalPages()).isEqualTo(3);
         }
@@ -199,7 +199,7 @@ class AccountServiceTest {
             assertThat(account.getHolderEmail()).isEqualTo("ana.souza@example.com");
             assertThat(account.getHolderPhone()).isEqualTo("21987654321");
             assertThat(response).isEqualTo(new AccountResponseDto(
-                    "12345", "Ana Souza", "21987654321", "ana.souza@example.com", Status.ACTIVE, ZERO));
+                    "12345", "Ana Souza", "21987654321", "ana.souza@example.com", AccountStatus.ACTIVE, ZERO));
         }
 
         @Test
@@ -255,7 +255,7 @@ class AccountServiceTest {
 
             accountService.close("12345");
 
-            assertThat(account.getStatus()).isEqualTo(Status.CLOSED);
+            assertThat(account.getStatus()).isEqualTo(AccountStatus.CLOSED);
         }
 
         @Test
@@ -287,7 +287,7 @@ class AccountServiceTest {
             assertThatThrownBy(() -> accountService.close("12345"))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Account balance must be zero to close");
-            assertThat(account.getStatus()).isEqualTo(Status.ACTIVE);
+            assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
         }
     }
 }

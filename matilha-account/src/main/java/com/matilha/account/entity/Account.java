@@ -59,7 +59,7 @@ public class Account {
 
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
-    private Status status;
+    private AccountStatus status;
 
     @Column(nullable = false, updatable = false)
     @CreationTimestamp
@@ -81,7 +81,7 @@ public class Account {
         this.holderEmail = normalizeEmail(holderEmail);
         this.holderPhone = normalizePhone(holderPhone);
         this.balance = BigDecimal.ZERO.setScale(MONEY_SCALE);
-        this.status = Status.ACTIVE;
+        this.status = AccountStatus.ACTIVE;
     }
 
     public void deposit(BigDecimal amount) {
@@ -100,31 +100,31 @@ public class Account {
     }
 
     public void block() {
-        if (status != Status.ACTIVE) {
+        if (status != AccountStatus.ACTIVE) {
             throw new BusinessException("Only active accounts can be blocked");
         }
-        this.status = Status.BLOCKED;
+        this.status = AccountStatus.BLOCKED;
     }
 
     public void unblock() {
-        if (status != Status.BLOCKED) {
+        if (status != AccountStatus.BLOCKED) {
             throw new BusinessException("Only blocked accounts can be unblocked");
         }
-        this.status = Status.ACTIVE;
+        this.status = AccountStatus.ACTIVE;
     }
 
     public void close() {
-        if (status == Status.CLOSED) {
+        if (status == AccountStatus.CLOSED) {
             throw new BusinessException("Account is already closed");
         }
         if (balance.signum() != 0) {
             throw new BusinessException("Account balance must be zero to close");
         }
-        this.status = Status.CLOSED;
+        this.status = AccountStatus.CLOSED;
     }
 
     private void requireActive() {
-        if (status != Status.ACTIVE) {
+        if (status != AccountStatus.ACTIVE) {
             throw new BusinessException("Account is not active");
         }
     }
@@ -166,7 +166,7 @@ public class Account {
     }
 
     public void updateHolderData(String holderName, String holderEmail, String holderPhone) {
-        if (status == Status.CLOSED) {
+        if (status == AccountStatus.CLOSED) {
             throw new BusinessException("Closed accounts cannot be updated");
         }
         String newName = holderName != null ? requireNotBlank(holderName, "holderName") : this.holderName;

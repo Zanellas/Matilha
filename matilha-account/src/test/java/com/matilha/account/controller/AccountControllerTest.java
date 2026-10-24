@@ -38,7 +38,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.matilha.account.dto.AccountResponseDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
 import com.matilha.account.dto.UpdateAccountRequestDto;
-import com.matilha.account.entity.Status;
+import com.matilha.account.entity.AccountStatus;
 import com.matilha.account.exception.AccountNotFoundException;
 import com.matilha.account.exception.BusinessException;
 import com.matilha.account.service.AccountService;
@@ -52,7 +52,7 @@ class AccountControllerTest {
     @MockitoBean
     private AccountService accountService;
 
-    private static AccountResponseDto responseFor(String accountNumber, String holderName, Status status) {
+    private static AccountResponseDto responseFor(String accountNumber, String holderName, AccountStatus status) {
         return new AccountResponseDto(accountNumber, holderName, "11987654321", "ana.silva@example.com", status,
                 new BigDecimal("150.75"));
     }
@@ -77,7 +77,7 @@ class AccountControllerTest {
         void shouldReturnCreatedWithAccount() throws Exception {
             CreateAccountRequestDto request = new CreateAccountRequestDto(
                     "Ana Silva", "529.982.247-25", "ana.silva@example.com", "(11) 98765-4321");
-            when(accountService.create(request)).thenReturn(responseFor("12345", "Ana Silva", Status.ACTIVE));
+            when(accountService.create(request)).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
 
             mockMvc.perform(post("/accounts")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -94,7 +94,7 @@ class AccountControllerTest {
 
         @Test
         void shouldAcceptUnformattedCpfAndPhone() throws Exception {
-            when(accountService.create(any())).thenReturn(responseFor("12345", "Ana Silva", Status.ACTIVE));
+            when(accountService.create(any())).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
 
             mockMvc.perform(post("/accounts")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -188,7 +188,7 @@ class AccountControllerTest {
 
         @Test
         void shouldReturnAccount() throws Exception {
-            when(accountService.findByAccountNumber("12345")).thenReturn(responseFor("12345", "Ana Silva", Status.ACTIVE));
+            when(accountService.findByAccountNumber("12345")).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
 
             mockMvc.perform(get("/accounts/12345"))
                     .andExpect(status().isOk())
@@ -215,8 +215,8 @@ class AccountControllerTest {
         void shouldReturnPagedAccounts() throws Exception {
             Pageable pageable = PageRequest.of(0, 2);
             List<AccountResponseDto> accounts = List.of(
-                    responseFor("11111", "Ana Silva", Status.ACTIVE),
-                    responseFor("22222", "Bruno Costa", Status.BLOCKED));
+                    responseFor("11111", "Ana Silva", AccountStatus.ACTIVE),
+                    responseFor("22222", "Bruno Costa", AccountStatus.BLOCKED));
             when(accountService.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(accounts, pageable, 5));
 
             mockMvc.perform(get("/accounts").param("page", "0").param("size", "2"))
@@ -250,7 +250,7 @@ class AccountControllerTest {
         @Test
         void shouldReturnUpdatedAccount() throws Exception {
             UpdateAccountRequestDto request = new UpdateAccountRequestDto("Ana Souza", null, null);
-            when(accountService.update("12345", request)).thenReturn(responseFor("12345", "Ana Souza", Status.ACTIVE));
+            when(accountService.update("12345", request)).thenReturn(responseFor("12345", "Ana Souza", AccountStatus.ACTIVE));
 
             mockMvc.perform(patch("/accounts/12345")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -264,7 +264,7 @@ class AccountControllerTest {
 
         @Test
         void shouldPassAllProvidedFieldsToService() throws Exception {
-            when(accountService.update(anyString(), any())).thenReturn(responseFor("12345", "Ana Souza", Status.ACTIVE));
+            when(accountService.update(anyString(), any())).thenReturn(responseFor("12345", "Ana Souza", AccountStatus.ACTIVE));
 
             mockMvc.perform(patch("/accounts/12345")
                     .contentType(MediaType.APPLICATION_JSON)

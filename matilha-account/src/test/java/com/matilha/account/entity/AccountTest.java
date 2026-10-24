@@ -39,7 +39,7 @@ class AccountTest {
             assertThat(account.getHolderDocument()).isEqualTo(CPF);
             assertThat(account.getHolderEmail()).isEqualTo(EMAIL);
             assertThat(account.getHolderPhone()).isEqualTo(PHONE);
-            assertThat(account.getStatus()).isEqualTo(Status.ACTIVE);
+            assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
             assertThat(account.getBalance()).isEqualByComparingTo("0.00");
             assertThat(account.getBalance().scale()).isEqualTo(2);
         }
@@ -382,7 +382,7 @@ class AccountTest {
         void shouldBlockActiveAccount() {
             account.block();
 
-            assertThat(account.getStatus()).isEqualTo(Status.BLOCKED);
+            assertThat(account.getStatus()).isEqualTo(AccountStatus.BLOCKED);
         }
 
         @Test
@@ -400,7 +400,7 @@ class AccountTest {
 
             account.unblock();
 
-            assertThat(account.getStatus()).isEqualTo(Status.ACTIVE);
+            assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
         }
 
         @Test
@@ -414,7 +414,7 @@ class AccountTest {
         void shouldCloseAccountWithZeroBalance() {
             account.close();
 
-            assertThat(account.getStatus()).isEqualTo(Status.CLOSED);
+            assertThat(account.getStatus()).isEqualTo(AccountStatus.CLOSED);
         }
 
         @Test
@@ -423,7 +423,7 @@ class AccountTest {
 
             account.close();
 
-            assertThat(account.getStatus()).isEqualTo(Status.CLOSED);
+            assertThat(account.getStatus()).isEqualTo(AccountStatus.CLOSED);
         }
 
         @Test
@@ -433,7 +433,7 @@ class AccountTest {
             assertThatThrownBy(account::close)
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Account balance must be zero to close");
-            assertThat(account.getStatus()).isEqualTo(Status.ACTIVE);
+            assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
         }
 
         @Test
