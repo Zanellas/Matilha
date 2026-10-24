@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.matilha.account.dto.AccountResponseDto;
+import com.matilha.account.dto.AccountSummaryDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
 import com.matilha.account.dto.UpdateAccountRequestDto;
 import com.matilha.account.entity.Account;
@@ -48,13 +49,18 @@ public class AccountService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AccountResponseDto> findAll(Pageable pageable) {
-        return accountRepository.findAll(pageable).map(this::toResponse);
+    public Page<AccountSummaryDto> findAll(Pageable pageable) {
+        return accountRepository.findAll(pageable).map(this::toSummary);
     }
 
     private AccountResponseDto toResponse(Account account) {
-        return new AccountResponseDto(account.getAccountNumber(), account.getHolderName(), account.getHolderPhone(), account.getHolderEmail(), account.getStatus(),
+        return new AccountResponseDto(account.getAccountNumber(), account.getHolderName(), account.getHolderPhone(),
+                account.getHolderEmail(), account.getStatus(),
                 account.getBalance());
+    }
+
+    private AccountSummaryDto toSummary(Account account) {
+        return new AccountSummaryDto(account.getAccountNumber(), account.getHolderName(), account.getStatus());
     }
 
     @Transactional
@@ -72,5 +78,19 @@ public class AccountService {
     private Account findAccountOrThrow(String accountNumber) {
         return accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new AccountNotFoundException(accountNumber));
+    }
+
+    @Transactional
+    public AccountResponseDto block(String accountNumber) {
+        Account account = findAccountOrThrow(accountNumber);
+        account.block();
+        return toResponse(account);
+    }
+
+    @Transactional
+    public AccountResponseDto unBlock(String accountNumber) {
+        Account account = findAccountOrThrow(accountNumber);
+        account.unblock();
+        return toResponse(account);
     }
 }

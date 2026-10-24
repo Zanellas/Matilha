@@ -155,6 +155,96 @@ class AccountTest {
     }
 
     @Nested
+    class UpdateHolderData {
+
+        @Test
+        void shouldUpdateAllFieldsNormalized() {
+            account.updateHolderData("Ana Souza", "  Ana.Souza@Example.COM ", "(21) 3456-7890");
+
+            assertThat(account.getHolderName()).isEqualTo("Ana Souza");
+            assertThat(account.getHolderEmail()).isEqualTo("ana.souza@example.com");
+            assertThat(account.getHolderPhone()).isEqualTo("2134567890");
+        }
+
+        @Test
+        void shouldKeepCurrentValuesForNullFields() {
+            account.updateHolderData("Ana Souza", null, null);
+
+            assertThat(account.getHolderName()).isEqualTo("Ana Souza");
+            assertThat(account.getHolderEmail()).isEqualTo(EMAIL);
+            assertThat(account.getHolderPhone()).isEqualTo(PHONE);
+        }
+
+        @Test
+        void shouldChangeNothingWhenAllFieldsAreNull() {
+            account.updateHolderData(null, null, null);
+
+            assertThat(account.getHolderName()).isEqualTo(HOLDER_NAME);
+            assertThat(account.getHolderEmail()).isEqualTo(EMAIL);
+            assertThat(account.getHolderPhone()).isEqualTo(PHONE);
+        }
+
+        @Test
+        void shouldNotChangeDocument() {
+            account.updateHolderData("Ana Souza", "ana.souza@example.com", "21987654321");
+
+            assertThat(account.getHolderDocument()).isEqualTo(CPF);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = { "", "   " })
+        void shouldRejectBlankName(String holderName) {
+            assertThatThrownBy(() -> account.updateHolderData(holderName, null, null))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("holderName must not be blank");
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = { "", "   " })
+        void shouldRejectBlankEmail(String holderEmail) {
+            assertThatThrownBy(() -> account.updateHolderData(null, holderEmail, null))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("holderEmail must not be blank");
+        }
+
+        @Test
+        void shouldRejectPhoneWithInvalidLength() {
+            assertThatThrownBy(() -> account.updateHolderData(null, null, "98765-4321"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("holderPhone must have 10 or 11 digits");
+        }
+
+        @Test
+        void shouldChangeNothingWhenAnyFieldIsInvalid() {
+            assertThatThrownBy(() -> account.updateHolderData("Ana Souza", "ana.souza@example.com", "123"))
+                    .isInstanceOf(BusinessException.class);
+
+            assertThat(account.getHolderName()).isEqualTo(HOLDER_NAME);
+            assertThat(account.getHolderEmail()).isEqualTo(EMAIL);
+            assertThat(account.getHolderPhone()).isEqualTo(PHONE);
+        }
+
+        @Test
+        void shouldAllowUpdatingBlockedAccount() {
+            account.block();
+
+            account.updateHolderData("Ana Souza", null, null);
+
+            assertThat(account.getHolderName()).isEqualTo("Ana Souza");
+        }
+
+        @Test
+        void shouldRejectUpdatingClosedAccount() {
+            account.close();
+
+            assertThatThrownBy(() -> account.updateHolderData("Ana Souza", null, null))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Closed accounts cannot be updated");
+            assertThat(account.getHolderName()).isEqualTo(HOLDER_NAME);
+        }
+    }
+
+    @Nested
     class Deposit {
 
         @Test
