@@ -1,7 +1,7 @@
 services:
-  postgres:
+  account-db:
     image: postgres:17
-    container_name: matilha-postgres
+    container_name: matilha-account-db
     environment:
       POSTGRES_DB: ${ACCOUNT_DB_NAME:?defina ACCOUNT_DB_NAME no .env}
       POSTGRES_USER: ${ACCOUNT_DB_USERNAME:?defina ACCOUNT_DB_USERNAME no .env}
@@ -9,7 +9,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - account-db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -23,12 +23,12 @@ services:
       - "127.0.0.1:8081:8081"
     environment:
       SPRING_PROFILES_ACTIVE: dev
-      ACCOUNT_DB_URL: jdbc:postgresql://postgres:5432/${ACCOUNT_DB_NAME:?defina ACCOUNT_DB_NAME no .env}
+      ACCOUNT_DB_URL: jdbc:postgresql://account-db:5432/${ACCOUNT_DB_NAME:?defina ACCOUNT_DB_NAME no .env}
       ACCOUNT_DB_USERNAME: ${ACCOUNT_DB_USERNAME:?defina ACCOUNT_DB_USERNAME no .env}
       ACCOUNT_DB_PASSWORD: ${ACCOUNT_DB_PASSWORD:?defina ACCOUNT_DB_PASSWORD no .env}
     depends_on:
-      postgres:
+      account-db:
         condition: service_healthy
 
 volumes:
-  postgres-data:
+  account-db-data:
