@@ -36,6 +36,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.matilha.account.dto.AccountResponseDto;
+import com.matilha.account.dto.AccountSummaryDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
 import com.matilha.account.dto.UpdateAccountRequestDto;
 import com.matilha.account.entity.AccountStatus;
@@ -214,20 +215,34 @@ class AccountControllerTest {
         @Test
         void shouldReturnPagedAccounts() throws Exception {
             Pageable pageable = PageRequest.of(0, 2);
-            List<AccountResponseDto> accounts = List.of(
-                    responseFor("11111", "Ana Silva", AccountStatus.ACTIVE),
-                    responseFor("22222", "Bruno Costa", AccountStatus.BLOCKED));
+            List<AccountSummaryDto> accounts = List.of(
+                    new AccountSummaryDto("11111", "Ana Silva", AccountStatus.ACTIVE),
+                    new AccountSummaryDto("22222", "Bruno Costa", AccountStatus.BLOCKED));
             when(accountService.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(accounts, pageable, 5));
 
             mockMvc.perform(get("/accounts").param("page", "0").param("size", "2"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.content.length()").value(2))
                     .andExpect(jsonPath("$.content[0].accountNumber").value("11111"))
+                    .andExpect(jsonPath("$.content[0].holderName").value("Ana Silva"))
                     .andExpect(jsonPath("$.content[1].status").value("BLOCKED"))
                     .andExpect(jsonPath("$.page.size").value(2))
                     .andExpect(jsonPath("$.page.number").value(0))
                     .andExpect(jsonPath("$.page.totalElements").value(5))
                     .andExpect(jsonPath("$.page.totalPages").value(3));
+        }
+
+        @Test
+        void shouldNotExposeContactDataOrBalanceInListing() throws Exception {
+            List<AccountSummaryDto> accounts = List.of(new AccountSummaryDto("11111", "Ana Silva", AccountStatus.ACTIVE));
+            when(accountService.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(accounts));
+
+            mockMvc.perform(get("/accounts"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.content[0].holderEmail").doesNotExist())
+                    .andExpect(jsonPath("$.content[0].holderPhone").doesNotExist())
+                    .andExpect(jsonPath("$.content[0].holderDocument").doesNotExist())
+                    .andExpect(jsonPath("$.content[0].balance").doesNotExist());
         }
 
         @Test
@@ -372,6 +387,78 @@ class AccountControllerTest {
             mockMvc.perform(delete("/accounts/12345"))
                     .andExpect(status().isUnprocessableContent())
                     .andExpect(jsonPath("$.detail").value("Account balance must be zero to close"));
+        }
+    }
+
+    @Nested
+    class Block {
+
+        @Test
+        void shouldReturnBlockedAccount() throws Exception {
+            when(accountService.block("12345")).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.BLOCKED));
+
+            mockMvc.perform(post("/accounts/12345/block"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.accountNumber").value("12345"))
+                    .andExpect(jsonPath("$.status").value("BLOCKED"));
+
+            verify(accountService).block("12345");
+            verify(accountService, never()).unblock(anyString());
+        }
+
+        @Test
+        void shouldReturnUnprocessableContentWhenAccountIsNotActive() throws Exception {
+            when(accountService.block("12345"))
+                    .thenThrow(new BusinessException("Only active accounts can be blocked"));
+
+            mockMvc.perform(post("/accounts/12345/block"))
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.detail").value("Only active accounts can be blocked"));
+        }
+
+        @Test
+        void shouldReturnNotFoundWhenAccountDoesNotExist() throws Exception {
+            when(accountService.block("99999")).thenThrow(new AccountNotFoundException("99999"));
+
+            mockMvc.perform(post("/accounts/99999/block"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.detail").value("Account 99999 not found"));
+        }
+    }
+
+    @Nested
+    class Unblock {
+
+        @Test
+        void shouldReturnActiveAccount() throws Exception {
+            when(accountService.unblock("12345")).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
+
+            mockMvc.perform(post("/accounts/12345/unblock"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.accountNumber").value("12345"))
+                    .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+            verify(accountService).unblock("12345");
+            verify(accountService, never()).block(anyString());
+        }
+
+        @Test
+        void shouldReturnUnprocessableContentWhenAccountIsNotBlocked() throws Exception {
+            when(accountService.unblock("12345"))
+                    .thenThrow(new BusinessException("Only blocked accounts can be unblocked"));
+
+            mockMvc.perform(post("/accounts/12345/unblock"))
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.detail").value("Only blocked accounts can be unblocked"));
+        }
+
+        @Test
+        void shouldReturnNotFoundWhenAccountDoesNotExist() throws Exception {
+            when(accountService.unblock("99999")).thenThrow(new AccountNotFoundException("99999"));
+
+            mockMvc.perform(post("/accounts/99999/unblock"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.detail").value("Account 99999 not found"));
         }
     }
 

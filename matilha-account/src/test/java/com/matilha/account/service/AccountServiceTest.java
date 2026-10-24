@@ -26,6 +26,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 import com.matilha.account.dto.AccountResponseDto;
+import com.matilha.account.dto.AccountSummaryDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
 import com.matilha.account.dto.UpdateAccountRequestDto;
 import com.matilha.account.entity.Account;
@@ -156,18 +157,18 @@ class AccountServiceTest {
     class FindAll {
 
         @Test
-        void shouldReturnPageOfResponses() {
+        void shouldReturnPageOfSummaries() {
             Pageable pageable = PageRequest.of(0, 2);
-            List<Account> accounts = List.of(
-                    newAccount("11111", "Ana Silva"),
-                    newAccount("22222", "Bruno Costa"));
+            Account blocked = newAccount("22222", "Bruno Costa");
+            blocked.block();
+            List<Account> accounts = List.of(newAccount("11111", "Ana Silva"), blocked);
             when(accountRepository.findAll(pageable)).thenReturn(new PageImpl<>(accounts, pageable, 5));
 
-            Page<AccountResponseDto> page = accountService.findAll(pageable);
+            Page<AccountSummaryDto> page = accountService.findAll(pageable);
 
             assertThat(page.getContent()).containsExactly(
-                    responseFor("11111", "Ana Silva", AccountStatus.ACTIVE),
-                    responseFor("22222", "Bruno Costa", AccountStatus.ACTIVE));
+                    new AccountSummaryDto("11111", "Ana Silva", AccountStatus.ACTIVE),
+                    new AccountSummaryDto("22222", "Bruno Costa", AccountStatus.BLOCKED));
             assertThat(page.getTotalElements()).isEqualTo(5);
             assertThat(page.getTotalPages()).isEqualTo(3);
         }
@@ -177,7 +178,7 @@ class AccountServiceTest {
             Pageable pageable = PageRequest.of(0, 20);
             when(accountRepository.findAll(pageable)).thenReturn(Page.empty(pageable));
 
-            Page<AccountResponseDto> page = accountService.findAll(pageable);
+            Page<AccountSummaryDto> page = accountService.findAll(pageable);
 
             assertThat(page.getContent()).isEmpty();
             assertThat(page.getTotalElements()).isZero();
@@ -288,6 +289,76 @@ class AccountServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Account balance must be zero to close");
             assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+        }
+    }
+
+    @Nested
+    class Block {
+
+        @Test
+        void shouldBlockActiveAccountAndReturnResponse() {
+            Account account = newAccount("12345", "Ana Silva");
+            when(accountRepository.findByAccountNumber("12345")).thenReturn(Optional.of(account));
+
+            AccountResponseDto response = accountService.block("12345");
+
+            assertThat(account.getStatus()).isEqualTo(AccountStatus.BLOCKED);
+            assertThat(response).isEqualTo(responseFor("12345", "Ana Silva", AccountStatus.BLOCKED));
+        }
+
+        @Test
+        void shouldRejectBlockingAccountThatIsNotActive() {
+            Account account = newAccount("12345", "Ana Silva");
+            account.block();
+            when(accountRepository.findByAccountNumber("12345")).thenReturn(Optional.of(account));
+
+            assertThatThrownBy(() -> accountService.block("12345"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Only active accounts can be blocked");
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenAccountDoesNotExist() {
+            when(accountRepository.findByAccountNumber("99999")).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> accountService.block("99999"))
+                    .isInstanceOf(AccountNotFoundException.class)
+                    .hasMessage("Account 99999 not found");
+        }
+    }
+
+    @Nested
+    class Unblock {
+
+        @Test
+        void shouldUnblockBlockedAccountAndReturnResponse() {
+            Account account = newAccount("12345", "Ana Silva");
+            account.block();
+            when(accountRepository.findByAccountNumber("12345")).thenReturn(Optional.of(account));
+
+            AccountResponseDto response = accountService.unblock("12345");
+
+            assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+            assertThat(response).isEqualTo(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
+        }
+
+        @Test
+        void shouldRejectUnblockingAccountThatIsNotBlocked() {
+            when(accountRepository.findByAccountNumber("12345"))
+                    .thenReturn(Optional.of(newAccount("12345", "Ana Silva")));
+
+            assertThatThrownBy(() -> accountService.unblock("12345"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Only blocked accounts can be unblocked");
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenAccountDoesNotExist() {
+            when(accountRepository.findByAccountNumber("99999")).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> accountService.unblock("99999"))
+                    .isInstanceOf(AccountNotFoundException.class)
+                    .hasMessage("Account 99999 not found");
         }
     }
 }
