@@ -7,7 +7,7 @@ Sistema bancário em microsserviços construído com Spring Boot. Cada serviço 
 | Serviço | Responsabilidade | Status |
 |---|---|---|
 | [matilha-account](matilha-account/) | Contas, saldo e movimentações (depósitos e transferências) | ✅ Pronto |
-| matilha-transfer | Orquestração de transferências entre contas | 🚧 Planejado |
+| [matilha-transfer](matilha-transfer/) | Orquestração de transferências entre contas | 🏗️ Estrutura base criada |
 | matilha-gateway | Porta de entrada da API e roteamento | 🚧 Planejado |
 | matilha-notification | Envio de notificações | 🚧 Planejado |
 | keycloak | Autenticação e autorização | 🚧 Planejado |
