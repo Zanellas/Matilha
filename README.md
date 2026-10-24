@@ -272,11 +272,14 @@ cd matilha-account
 ./mvnw verify
 ```
 
-Os testes não precisam de Docker: usam H2 em memória com o schema gerado pelo Hibernate. Eles cobrem:
+O Docker precisa estar rodando, porque o teste de concorrência sobe um PostgreSQL com Testcontainers. Os testes cobrem:
 
 - **Entidades**: regras de saldo, status, normalização e validação
 - **Services**: criação de conta, depósito, transferência, idempotência e ordem de lock (com Mockito)
 - **Controllers**: contratos HTTP, validação e respostas de erro (com MockMvc)
+- **Concorrência**: transferências e depósitos simultâneos contra um PostgreSQL real, com Flyway e locks de verdade. O teste confere que o saldo nunca fica negativo, que não há deadlock, que uma operação repetida não move dinheiro duas vezes e que nenhuma atualização se perde.
+
+O teste de contexto (`AccountApplicationTests`) usa o perfil `test` (`src/test/resources/application-test.yml`), com H2 em memória.
 
 ### Estrutura
 

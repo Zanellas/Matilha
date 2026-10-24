@@ -11,6 +11,7 @@ import com.matilha.account.entity.Account;
 import com.matilha.account.entity.AccountMovement;
 import com.matilha.account.entity.MovementOperation;
 import com.matilha.account.exception.AccountNotFoundException;
+import com.matilha.account.exception.BusinessException;
 import com.matilha.account.repository.AccountMovementRepository;
 import com.matilha.account.repository.AccountRepository;
 
@@ -28,7 +29,11 @@ public class DepositService {
         List<AccountMovement> existing = accountMovementRepository
                 .findByOperationIdAndOperation(request.depositId(), MovementOperation.DEPOSIT);
         if (!existing.isEmpty()) {
-            return toResponse(existing.getFirst());
+            DepositResponseDto previous = toResponse(existing.getFirst());
+            if (!isSameDeposit(previous, request)) {
+                throw new BusinessException("Deposit already processed with different data");
+            }
+            return previous;
         }
 
         Account account = accountRepository.findByAccountNumberForUpdate(request.accountNumber())
@@ -39,6 +44,11 @@ public class DepositService {
         AccountMovement movement = AccountMovement.deposit(account, request.depositId(), request.amount());
         accountMovementRepository.save(movement);
         return toResponse(movement);
+    }
+
+    private boolean isSameDeposit(DepositResponseDto previous, DepositRequestDto request) {
+        return previous.accountNumber().equals(request.accountNumber())
+                && previous.amount().compareTo(request.amount()) == 0;
     }
 
     private DepositResponseDto toResponse(AccountMovement movement) {

@@ -41,6 +41,7 @@ class TransferServiceTest {
     private static final UUID TRANSFER_ID = UUID.fromString("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
     private static final String SOURCE = "12345";
     private static final String TARGET = "67890";
+    private static final String OTHER = "11111";
 
     @Mock
     private AccountRepository accountRepository;
@@ -223,6 +224,61 @@ class TransferServiceTest {
 
             assertThat(source.getBalance()).isEqualByComparingTo("350.00");
             assertThat(target.getBalance()).isEqualByComparingTo("250.00");
+            verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
+            verify(accountMovementRepository, never()).saveAll(anyIterable());
+        }
+
+        @Test
+        void shouldTreatSameAmountWithDifferentScaleAsSameTransfer() {
+            givenAppliedTransfer();
+
+            TransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150"));
+
+            assertThat(response.amount()).isEqualByComparingTo("150.00");
+            verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
+        }
+
+        @Test
+        void shouldRejectRepeatedTransferIdWithDifferentAmount() {
+            givenAppliedTransfer();
+
+            assertRejectedAsDifferentTransfer(request(SOURCE, TARGET, "150.01"));
+        }
+
+        @Test
+        void shouldRejectRepeatedTransferIdWithDifferentSource() {
+            givenAppliedTransfer();
+
+            assertRejectedAsDifferentTransfer(request(OTHER, TARGET, "150.00"));
+        }
+
+        @Test
+        void shouldRejectRepeatedTransferIdWithDifferentTarget() {
+            givenAppliedTransfer();
+
+            assertRejectedAsDifferentTransfer(request(SOURCE, OTHER, "150.00"));
+        }
+
+        @Test
+        void shouldRejectRepeatedTransferIdWithSourceAndTargetSwapped() {
+            givenAppliedTransfer();
+
+            assertRejectedAsDifferentTransfer(request(TARGET, SOURCE, "150.00"));
+        }
+
+        private void givenAppliedTransfer() {
+            Account source = accountWithBalance(SOURCE, "350.00");
+            Account target = accountWithBalance(TARGET, "250.00");
+            BigDecimal amount = new BigDecimal("150.00");
+            when(accountMovementRepository.findByOperationIdAndOperation(TRANSFER_ID, MovementOperation.TRANSFER)).thenReturn(List.of(
+                    AccountMovement.transferDebit(source, TRANSFER_ID, amount),
+                    AccountMovement.transferCredit(target, TRANSFER_ID, amount)));
+        }
+
+        private void assertRejectedAsDifferentTransfer(TransferRequestDto request) {
+            assertThatThrownBy(() -> transferService.transfer(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Transfer already processed with different data");
             verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
             verify(accountMovementRepository, never()).saveAll(anyIterable());
         }

@@ -175,6 +175,44 @@ class DepositServiceTest {
 
             verify(accountMovementRepository).findByOperationIdAndOperation(DEPOSIT_ID, MovementOperation.DEPOSIT);
         }
+
+        @Test
+        void shouldTreatSameAmountWithDifferentScaleAsSameDeposit() {
+            givenAppliedDeposit();
+
+            DepositResponseDto response = depositService.deposit(request("50.250"));
+
+            assertThat(response.amount()).isEqualByComparingTo("50.25");
+            verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
+        }
+
+        @Test
+        void shouldRejectRepeatedDepositIdWithDifferentAmount() {
+            givenAppliedDeposit();
+
+            assertRejectedAsDifferentDeposit(request("50.26"));
+        }
+
+        @Test
+        void shouldRejectRepeatedDepositIdWithDifferentAccount() {
+            givenAppliedDeposit();
+
+            assertRejectedAsDifferentDeposit(new DepositRequestDto(DEPOSIT_ID, "11111", new BigDecimal("50.25")));
+        }
+
+        private void givenAppliedDeposit() {
+            Account account = accountWithBalance("150.25");
+            when(accountMovementRepository.findByOperationIdAndOperation(DEPOSIT_ID, MovementOperation.DEPOSIT))
+                    .thenReturn(List.of(AccountMovement.deposit(account, DEPOSIT_ID, new BigDecimal("50.25"))));
+        }
+
+        private void assertRejectedAsDifferentDeposit(DepositRequestDto request) {
+            assertThatThrownBy(() -> depositService.deposit(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Deposit already processed with different data");
+            verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
+            verify(accountMovementRepository, never()).save(any());
+        }
     }
 
     @Nested

@@ -30,7 +30,11 @@ public class TransferService {
     public TransferResponseDto transfer(TransferRequestDto request) {
         List<AccountMovement> existing = accountMovementRepository.findByOperationIdAndOperation(request.transferId(), MovementOperation.TRANSFER);
         if (!existing.isEmpty()) {
-            return toResponse(request.transferId(), existing);
+            TransferResponseDto previous = toResponse(request.transferId(), existing);
+            if (!isSameTransfer(previous, request)) {
+                throw new BusinessException("Transfer already processed with different data");
+            }
+            return previous;
         }
 
         String sourceNumber = request.sourceAccountNumber();
@@ -57,6 +61,12 @@ public class TransferService {
         accountMovementRepository.saveAll(List.of(debit, credit));
 
         return toResponse(request.transferId(), List.of(debit, credit));
+    }
+
+    private boolean isSameTransfer(TransferResponseDto previous, TransferRequestDto request) {
+        return previous.sourceAccountNumber().equals(request.sourceAccountNumber())
+                && previous.targetAccountNumber().equals(request.targetAccountNumber())
+                && previous.amount().compareTo(request.amount()) == 0;
     }
 
     private Account lockAccount(String accountNumber) {
