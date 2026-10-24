@@ -1,0 +1,34 @@
+services:
+  transfer-db:
+    image: postgres:17
+    container_name: matilha-transfer-db
+    environment:
+      POSTGRES_DB: ${TRANSFER_DB_NAME:?defina TRANSFER_DB_NAME no .env}
+      POSTGRES_USER: ${TRANSFER_DB_USERNAME:?defina TRANSFER_DB_USERNAME no .env}
+      POSTGRES_PASSWORD: ${TRANSFER_DB_PASSWORD:?defina TRANSFER_DB_PASSWORD no .env}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - transfer-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  transfer:
+    build: .
+    container_name: matilha-transfer
+    ports:
+      - "127.0.0.1:8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      TRANSFER_DB_URL: jdbc:postgresql://transfer-db:5432/${TRANSFER_DB_NAME:?defina TRANSFER_DB_NAME no .env}
+      TRANSFER_DB_USERNAME: ${TRANSFER_DB_USERNAME:?defina TRANSFER_DB_USERNAME no .env}
+      TRANSFER_DB_PASSWORD: ${TRANSFER_DB_PASSWORD:?defina TRANSFER_DB_PASSWORD no .env}
+    depends_on:
+      transfer-db:
+        condition: service_healthy
+
+volumes:
+  transfer-db-data:
