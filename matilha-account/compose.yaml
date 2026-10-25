@@ -1,3 +1,5 @@
+name: matilha
+
 services:
   account-db:
     image: postgres:17

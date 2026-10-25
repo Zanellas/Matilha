@@ -2,3 +2,4 @@ name: matilha
 
 include:
   - matilha-account/compose.yaml
+  - matilha-transfer/compose.yaml
