@@ -64,3 +64,7 @@ info:
   app:
     name: matilha-transfer
     description: Transfer service
+
+matilha:
+  account:
+    base-url: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
