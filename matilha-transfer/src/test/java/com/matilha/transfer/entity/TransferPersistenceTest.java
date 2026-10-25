@@ -118,6 +118,25 @@ class TransferPersistenceTest {
         }
 
         @Test
+        void shouldFindByIdempotencyKey() {
+            UUID key = UUID.randomUUID();
+            Transfer saved = transferRepository.save(newTransfer(key, "10.00"));
+            transferRepository.save(newTransfer(UUID.randomUUID(), "20.00"));
+
+            assertThat(transferRepository.findByIdempotencyKey(key))
+                    .get()
+                    .extracting(Transfer::getId)
+                    .isEqualTo(saved.getId());
+        }
+
+        @Test
+        void shouldReturnEmptyForUnknownIdempotencyKey() {
+            transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
+
+            assertThat(transferRepository.findByIdempotencyKey(UUID.randomUUID())).isEmpty();
+        }
+
+        @Test
         void shouldRejectDuplicateIdempotencyKey() {
             UUID key = UUID.randomUUID();
             transferRepository.save(newTransfer(key, "10.00"));
