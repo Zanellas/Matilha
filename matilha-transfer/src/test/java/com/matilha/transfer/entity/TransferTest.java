@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -16,6 +17,7 @@ import com.matilha.transfer.exception.BusinessException;
 
 class TransferTest {
 
+    private static final UUID KEY = UUID.fromString("3f1c2a9e-7b4d-4c1a-9e2f-5a6b7c8d9e01");
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
     private static final BigDecimal AMOUNT = new BigDecimal("250.50");
@@ -24,7 +26,7 @@ class TransferTest {
 
     @BeforeEach
     void setUp() {
-        transfer = new Transfer(SOURCE, TARGET, AMOUNT);
+        transfer = new Transfer(KEY, SOURCE, TARGET, AMOUNT);
     }
 
     @Nested
@@ -32,6 +34,7 @@ class TransferTest {
 
         @Test
         void shouldCreatePendingTransfer() {
+            assertThat(transfer.getIdempotencyKey()).isEqualTo(KEY);
             assertThat(transfer.getSourceAccountNumber()).isEqualTo(SOURCE);
             assertThat(transfer.getTargetAccountNumber()).isEqualTo(TARGET);
             assertThat(transfer.getAmount()).isEqualByComparingTo("250.50");
@@ -40,27 +43,23 @@ class TransferTest {
         }
 
         @Test
-        void shouldGenerateIdOnCreation() {
-            assertThat(transfer.getId()).isNotNull();
-        }
-
-        @Test
-        void shouldGenerateDifferentIdForEachTransfer() {
-            Transfer other = new Transfer(SOURCE, TARGET, AMOUNT);
-
-            assertThat(other.getId()).isNotEqualTo(transfer.getId());
-        }
-
-        @Test
-        void shouldLeaveVersionNullSoItIsTreatedAsNew() {
+        void shouldLeaveIdAndVersionNullUntilPersisted() {
+            assertThat(transfer.getId()).isNull();
             assertThat(transfer.getVersion()).isNull();
+        }
+
+        @Test
+        void shouldRejectNullIdempotencyKey() {
+            assertThatThrownBy(() -> new Transfer(null, SOURCE, TARGET, AMOUNT))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("idempotencyKey must not be null");
         }
 
         @ParameterizedTest
         @NullAndEmptySource
         @ValueSource(strings = { "   " })
         void shouldRejectBlankSourceAccountNumber(String source) {
-            assertThatThrownBy(() -> new Transfer(source, TARGET, AMOUNT))
+            assertThatThrownBy(() -> new Transfer(KEY, source, TARGET, AMOUNT))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("sourceAccountNumber must not be blank");
         }
@@ -69,14 +68,14 @@ class TransferTest {
         @NullAndEmptySource
         @ValueSource(strings = { "   " })
         void shouldRejectBlankTargetAccountNumber(String target) {
-            assertThatThrownBy(() -> new Transfer(SOURCE, target, AMOUNT))
+            assertThatThrownBy(() -> new Transfer(KEY, SOURCE, target, AMOUNT))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("targetAccountNumber must not be blank");
         }
 
         @Test
         void shouldRejectSameSourceAndTarget() {
-            assertThatThrownBy(() -> new Transfer(SOURCE, SOURCE, AMOUNT))
+            assertThatThrownBy(() -> new Transfer(KEY, SOURCE, SOURCE, AMOUNT))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Source and target accounts must be different");
         }
@@ -87,21 +86,21 @@ class TransferTest {
 
         @Test
         void shouldAcceptAmountWithTrailingZeros() {
-            Transfer trailingZeros = new Transfer(SOURCE, TARGET, new BigDecimal("10.500"));
+            Transfer trailingZeros = new Transfer(KEY, SOURCE, TARGET, new BigDecimal("10.500"));
 
             assertThat(trailingZeros.getAmount()).isEqualByComparingTo("10.50");
         }
 
         @Test
         void shouldAcceptSmallestPositiveAmount() {
-            Transfer smallest = new Transfer(SOURCE, TARGET, new BigDecimal("0.01"));
+            Transfer smallest = new Transfer(KEY, SOURCE, TARGET, new BigDecimal("0.01"));
 
             assertThat(smallest.getAmount()).isEqualByComparingTo("0.01");
         }
 
         @Test
         void shouldRejectNullAmount() {
-            assertThatThrownBy(() -> new Transfer(SOURCE, TARGET, null))
+            assertThatThrownBy(() -> new Transfer(KEY, SOURCE, TARGET, null))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Amount must be positive");
         }
@@ -109,7 +108,7 @@ class TransferTest {
         @ParameterizedTest
         @ValueSource(strings = { "0", "0.00", "-10.00" })
         void shouldRejectZeroOrNegativeAmount(String amount) {
-            assertThatThrownBy(() -> new Transfer(SOURCE, TARGET, new BigDecimal(amount)))
+            assertThatThrownBy(() -> new Transfer(KEY, SOURCE, TARGET, new BigDecimal(amount)))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Amount must be positive");
         }
@@ -117,9 +116,44 @@ class TransferTest {
         @ParameterizedTest
         @ValueSource(strings = { "10.555", "0.001" })
         void shouldRejectAmountWithMoreThanTwoDecimalPlaces(String amount) {
-            assertThatThrownBy(() -> new Transfer(SOURCE, TARGET, new BigDecimal(amount)))
+            assertThatThrownBy(() -> new Transfer(KEY, SOURCE, TARGET, new BigDecimal(amount)))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Amount must have at most 2 decimal places");
+        }
+    }
+
+    @Nested
+    class Matches {
+
+        @Test
+        void shouldMatchSameData() {
+            assertThat(transfer.matches(SOURCE, TARGET, AMOUNT)).isTrue();
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = { "250.5", "250.500" })
+        void shouldMatchAmountWithDifferentScale(String amount) {
+            assertThat(transfer.matches(SOURCE, TARGET, new BigDecimal(amount))).isTrue();
+        }
+
+        @Test
+        void shouldNotMatchDifferentSource() {
+            assertThat(transfer.matches("10003", TARGET, AMOUNT)).isFalse();
+        }
+
+        @Test
+        void shouldNotMatchDifferentTarget() {
+            assertThat(transfer.matches(SOURCE, "10003", AMOUNT)).isFalse();
+        }
+
+        @Test
+        void shouldNotMatchDifferentAmount() {
+            assertThat(transfer.matches(SOURCE, TARGET, new BigDecimal("250.51"))).isFalse();
+        }
+
+        @Test
+        void shouldNotMatchSwappedAccounts() {
+            assertThat(transfer.matches(TARGET, SOURCE, AMOUNT)).isFalse();
         }
     }
 

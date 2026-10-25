@@ -19,7 +19,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import jakarta.persistence.EntityManager;
+import com.matilha.transfer.repository.TransferRepository;
 
 /**
  * Roda contra um PostgreSQL real com as migrações do Flyway, por isso precisa do Docker.
@@ -37,7 +37,7 @@ class TransferPersistenceTest {
     static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");
 
     @Autowired
-    private EntityManager entityManager;
+    private TransferRepository transferRepository;
 
     @Autowired
     private TransactionTemplate transactionTemplate;
@@ -47,28 +47,43 @@ class TransferPersistenceTest {
 
     @BeforeEach
     void cleanDatabase() {
-        jdbcTemplate.update("DELETE FROM transfers");
+        transferRepository.deleteAll();
     }
 
-    private Transfer save(Transfer transfer) {
-        transactionTemplate.executeWithoutResult(status -> entityManager.persist(transfer));
-        return transfer;
+    private static Transfer newTransfer(UUID key, String amount) {
+        return new Transfer(key, SOURCE, TARGET, new BigDecimal(amount));
     }
 
     private Transfer reload(UUID id) {
-        return transactionTemplate.execute(status -> entityManager.find(Transfer.class, id));
+        return transferRepository.findById(id).orElseThrow();
     }
 
     @Nested
     class Mapping {
 
         @Test
+        void shouldGenerateIdWhenPersisted() {
+            Transfer saved = transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
+
+            assertThat(saved.getId()).isNotNull();
+        }
+
+        @Test
+        void shouldGenerateDifferentIdForEachTransfer() {
+            Transfer first = transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
+            Transfer second = transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
+
+            assertThat(first.getId()).isNotEqualTo(second.getId());
+        }
+
+        @Test
         void shouldPersistAndLoadPendingTransfer() {
-            Transfer saved = save(new Transfer(SOURCE, TARGET, new BigDecimal("250.50")));
+            UUID key = UUID.randomUUID();
+            Transfer saved = transferRepository.save(newTransfer(key, "250.50"));
 
             Transfer loaded = reload(saved.getId());
 
-            assertThat(loaded.getId()).isEqualTo(saved.getId());
+            assertThat(loaded.getIdempotencyKey()).isEqualTo(key);
             assertThat(loaded.getSourceAccountNumber()).isEqualTo(SOURCE);
             assertThat(loaded.getTargetAccountNumber()).isEqualTo(TARGET);
             assertThat(loaded.getAmount()).isEqualByComparingTo("250.50");
@@ -81,9 +96,9 @@ class TransferPersistenceTest {
 
         @Test
         void shouldPersistCompletedTransfer() {
-            Transfer saved = save(new Transfer(SOURCE, TARGET, new BigDecimal("10.00")));
+            Transfer saved = transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
 
-            transactionTemplate.executeWithoutResult(status -> entityManager.find(Transfer.class, saved.getId()).complete());
+            transactionTemplate.executeWithoutResult(status -> reload(saved.getId()).complete());
 
             Transfer loaded = reload(saved.getId());
             assertThat(loaded.getStatus()).isEqualTo(TransferStatus.COMPLETED);
@@ -93,14 +108,24 @@ class TransferPersistenceTest {
 
         @Test
         void shouldPersistFailedTransferWithReason() {
-            Transfer saved = save(new Transfer(SOURCE, TARGET, new BigDecimal("10.00")));
+            Transfer saved = transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
 
-            transactionTemplate.executeWithoutResult(status -> entityManager.find(Transfer.class, saved.getId())
-                    .fail("Insufficient balance"));
+            transactionTemplate.executeWithoutResult(status -> reload(saved.getId()).fail("Insufficient balance"));
 
             Transfer loaded = reload(saved.getId());
             assertThat(loaded.getStatus()).isEqualTo(TransferStatus.FAILED);
             assertThat(loaded.getFailureReason()).isEqualTo("Insufficient balance");
+        }
+
+        @Test
+        void shouldRejectDuplicateIdempotencyKey() {
+            UUID key = UUID.randomUUID();
+            transferRepository.save(newTransfer(key, "10.00"));
+
+            assertThatThrownBy(() -> transferRepository.saveAndFlush(newTransfer(key, "10.00")))
+                    .isInstanceOf(DataIntegrityViolationException.class)
+                    .hasMessageContaining("uk_transfers_idempotency_key");
+            assertThat(transferRepository.count()).isEqualTo(1);
         }
     }
 
@@ -109,9 +134,10 @@ class TransferPersistenceTest {
 
         private void insert(String source, String target, String amount, String status) {
             jdbcTemplate.update("""
-                    INSERT INTO transfers (id, source_account_number, target_account_number, amount, status, created_at)
-                    VALUES (?, ?, ?, ?, ?, now())
-                    """, UUID.randomUUID(), source, target, new BigDecimal(amount), status);
+                    INSERT INTO transfers (id, idempotency_key, source_account_number, target_account_number,
+                                           amount, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, now())
+                    """, UUID.randomUUID(), UUID.randomUUID(), source, target, new BigDecimal(amount), status);
         }
 
         @Test
@@ -153,6 +179,16 @@ class TransferPersistenceTest {
         void shouldRejectMissingRequiredColumn() {
             assertThatThrownBy(() -> insert(null, TARGET, "10.00", "PENDING"))
                     .isInstanceOf(DataIntegrityViolationException.class);
+        }
+
+        @Test
+        void shouldRejectMissingIdempotencyKey() {
+            assertThatThrownBy(() -> jdbcTemplate.update("""
+                    INSERT INTO transfers (id, source_account_number, target_account_number, amount, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, now())
+                    """, UUID.randomUUID(), SOURCE, TARGET, new BigDecimal("10.00"), "PENDING"))
+                    .isInstanceOf(DataIntegrityViolationException.class)
+                    .hasMessageContaining("idempotency_key");
         }
     }
 }
