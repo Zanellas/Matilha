@@ -28,6 +28,7 @@ services:
       TRANSFER_DB_URL: jdbc:postgresql://transfer-db:5432/${TRANSFER_DB_NAME:?defina TRANSFER_DB_NAME no .env}
       TRANSFER_DB_USERNAME: ${TRANSFER_DB_USERNAME:?defina TRANSFER_DB_USERNAME no .env}
       TRANSFER_DB_PASSWORD: ${TRANSFER_DB_PASSWORD:?defina TRANSFER_DB_PASSWORD no .env}
+      ACCOUNT_SERVICE_URL: http://account:8081
     depends_on:
       transfer-db:
         condition: service_healthy
