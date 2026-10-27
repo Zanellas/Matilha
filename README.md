@@ -7,7 +7,7 @@ Sistema bancário em microsserviços construído com Spring Boot. Cada serviço 
 | Serviço | Responsabilidade | Status |
 |---|---|---|
 | [matilha-account](matilha-account/) | Contas, saldo e movimentações (depósitos e transferências) | ✅ Pronto |
-| [matilha-transfer](matilha-transfer/) | Orquestração de transferências entre contas | 🟡 Funcional (falta o reenvio das pendentes) |
+| [matilha-transfer](matilha-transfer/) | Orquestração de transferências entre contas | ✅ Pronto (fase síncrona) |
 | matilha-gateway | Porta de entrada da API e roteamento | 🚧 Planejado |
 | matilha-notification | Envio de notificações | 🚧 Planejado |
 | keycloak | Autenticação e autorização | 🚧 Planejado |
@@ -361,15 +361,28 @@ Health check: http://localhost:8082/actuator/health.
 | `POST` | `/transfers` | Pede uma transferência (exige o header `Idempotency-Key`) | `201`, `202` ou `422` |
 | `GET` | `/transfers/{id}` | Consulta uma transferência | `200` |
 
-O status HTTP do `POST` depende do resultado. O corpo é sempre a transferência:
+O status HTTP do `POST` depende do resultado:
 
-| Resultado | HTTP | Significado |
+| Resultado | HTTP | Corpo |
 |---|---|---|
-| `COMPLETED` | `201 Created` | O dinheiro foi movido |
-| `PENDING` | `202 Accepted` | Ainda não se sabe se o dinheiro foi movido (o account não respondeu) |
-| `FAILED` | `422 Unprocessable Content` | O account recusou. O motivo vem em `failureReason`. |
+| `COMPLETED` | `201 Created` | A transferência. O dinheiro foi movido. |
+| `PENDING` | `202 Accepted` | A transferência. Ainda não se sabe se o dinheiro foi movido (o account não respondeu). |
+| `FAILED` | `422 Unprocessable Content` | Um Problem Details com o motivo em `detail` e o id em `transferId` |
 
-Em `201` e `202`, o header `Location` aponta para `/transfers/{id}`.
+Em `201` e `202`, o header `Location` aponta para `/transfers/{id}`. A transferência recusada fica salva e pode ser consultada pelo `transferId`.
+
+Transferência recusada:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Transfer failed",
+  "status": 422,
+  "detail": "Insufficient balance",
+  "instance": "/transfers",
+  "transferId": "8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d"
+}
+```
 
 #### Exemplo
 
@@ -430,7 +443,8 @@ O `id` da transferência vai como `transferId` para o account, que também é id
 |---|---|
 | `200` | `COMPLETED` |
 | `404` ou `422` | `FAILED`, com o `detail` do account em `failureReason` |
-| `409`, `5xx`, timeout, conexão recusada ou resposta ilegível | `PENDING` |
+| `400` | `FAILED` com log de erro: o transfer mandou um pedido inválido, o que é um bug |
+| `409`, outros `4xx`, `5xx`, timeout, conexão recusada ou resposta ilegível | `PENDING` |
 
 Um timeout fica `PENDING`, e não `FAILED`, porque o account pode ter movido o dinheiro e a resposta ter se perdido no caminho. Os timeouts são de 2 segundos para conectar e 5 segundos para ler.
 
@@ -441,11 +455,24 @@ A chamada ao account acontece fora de transação, para não prender uma conexã
 - As contas têm 5 dígitos e precisam ser diferentes.
 - O valor precisa ser positivo, com no máximo 2 casas decimais.
 
-**Limitação conhecida:** ainda não existe o reenvio automático. Uma transferência `PENDING` continua assim mesmo depois que o account volta. Isso será resolvido por um job que reenvia as pendentes com o mesmo `transferId`.
+**Reconciliador de pendentes**
+
+Uma transferência fica `PENDING` quando o account não respondeu, ou quando ele moveu o dinheiro e a gravação do resultado falhou. O `TransferReconciler` resolve os dois casos: a cada minuto, ele pega as `PENDING` com mais de 30 segundos e reenvia ao account com o mesmo `transferId`. Como o account é idempotente, ele responde com o resultado original ou processa agora.
+
+- **Várias réplicas:** a busca usa `SELECT ... FOR UPDATE SKIP LOCKED` numa transação curta, que grava uma reserva em `claimed_until` (5 minutos). Cada pendente é pega por uma réplica só. Se a réplica cair no meio, a reserva expira e outra assume.
+- **Lotes de 20:** uma transferência com problema é registrada no log e não impede as outras do lote.
+- **`@Version`:** se o reconciliador e uma requisição terminarem a mesma transferência, só um grava o resultado.
+
+| Propriedade | Padrão | Significado |
+|---|---|---|
+| `matilha.reconciler.interval` | `PT60S` | Intervalo entre as rodadas |
+| `matilha.reconciler.min-age` | `PT30S` | Idade mínima de uma `PENDING` para ser reenviada. Precisa ser maior que os timeouts do account somados. |
+| `matilha.reconciler.lease` | `PT5M` | Duração da reserva. Precisa cobrir um lote inteiro (20 × 7s no pior caso). |
+| `matilha.reconciler.enabled` | `true` | Liga ou desliga o agendamento |
 
 ### Erros
 
-As respostas de erro seguem o formato Problem Details, como no account. A exceção é a transferência recusada (`422` com status `FAILED`), que devolve a própria transferência.
+Todas as respostas de erro seguem o formato Problem Details, como no account, inclusive a transferência recusada.
 
 | Status | Quando |
 |---|---|
@@ -459,9 +486,9 @@ As respostas de erro seguem o formato Problem Details, como no account. A exceç
 
 | Tabela | Conteúdo |
 |---|---|
-| `transfers` | Contas, valor, status, motivo da falha, `idempotency_key` (única) e `version` (lock otimista) |
+| `transfers` | Contas, valor, status, motivo da falha, `idempotency_key` (única), `claimed_until` (reserva do reconciliador) e `version` (lock otimista) |
 
-O banco também garante as regras com constraints: status válido, valor positivo e contas diferentes.
+O banco também garante as regras com constraints: status válido, valor positivo e contas diferentes. Um índice parcial sobre as `PENDING` deixa a busca do reconciliador rápida mesmo com a tabela grande.
 
 ### Testes
 
@@ -473,14 +500,15 @@ cd matilha-transfer
 O Docker precisa estar rodando, porque os testes de persistência sobem um PostgreSQL com Testcontainers. Os testes cobrem:
 
 - **Entidade**: validações, transições de status e comparação de pedidos
-- **Persistência**: as migrações contra um PostgreSQL real, as constraints e a chave de idempotência única
+- **Persistência**: as migrações contra um PostgreSQL real, as constraints, a chave de idempotência única e a busca do reconciliador. Um teste abre duas transações ao mesmo tempo e confere que o `SKIP LOCKED` dá lotes diferentes para cada uma, sem esperar.
+- **Reconciliador**: o corte por idade, o lote, a reserva e a continuidade quando uma transferência falha (com Mockito)
 - **AccountClient**: as respostas do account contra um servidor HTTP de verdade, incluindo conexão recusada e timeout. O teste de timeout leva uns 5 segundos.
 - **Service**: sucesso, recusa, indisponibilidade, reenvio e corrida pela mesma chave (com Mockito)
 - **Controller**: status HTTP de cada resultado, header de idempotência, validação e erros (com MockMvc)
 
 #### Postman
 
-A collection [postman/matilha-transfer.postman_collection.json](postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro com os dois serviços rodando no perfil `dev`. Ela inclui sucesso, idempotência (conferindo que o saldo muda uma vez só), recusas, consulta e validação. Rode pelo Collection Runner, sem a pasta 6, que é manual e exige parar o account.
+A collection [postman/matilha-transfer.postman_collection.json](postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro com os dois serviços rodando no perfil `dev`. Ela inclui sucesso, idempotência (conferindo que o saldo muda uma vez só), recusas, consulta e validação. Rode pelo Collection Runner, sem a pasta 6. Ela é manual: você para o account, cria uma transferência (`202 PENDING`), sobe o account de novo e confere que o reconciliador a marcou `COMPLETED`.
 
 ### Estrutura
 
@@ -488,7 +516,8 @@ A collection [postman/matilha-transfer.postman_collection.json](postman/matilha-
 matilha-transfer/
 ├── src/main/java/com/matilha/transfer/
 │   ├── client/        # AccountClient (chamadas ao matilha-account)
-│   ├── config/        # OpenAPI
+│   ├── component/     # TransferReconciler (reenvio agendado das pendentes)
+│   ├── config/        # OpenAPI e agendamento
 │   ├── controller/    # Endpoints de transferência
 │   ├── dto/           # Records de request/response (próprios e do account)
 │   ├── entity/        # Transfer e TransferStatus

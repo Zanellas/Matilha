@@ -168,6 +168,19 @@ class AccountClientTest {
                     .hasMessage("Insufficient balance");
         }
 
+        /**
+         * Um 400 vem do @Valid do account, antes de qualquer movimentação: é bug do transfer e
+         * reenviar nunca resolve. Por isso é recusa definitiva, com motivo fixo (não expõe o corpo).
+         */
+        @Test
+        void shouldRejectWhenAccountSaysRequestIsInvalid() {
+            respondWithProblem(400, "Invalid request");
+
+            assertThatThrownBy(() -> client.transfer(REQUEST))
+                    .isInstanceOf(AccountTransferRejectedException.class)
+                    .hasMessage("Invalid request sent to account service");
+        }
+
         @Test
         void shouldUseFallbackReasonWhenBodyIsEmpty() {
             respond(422, null, null);
@@ -228,13 +241,14 @@ class AccountClientTest {
                     .hasMessageContaining("409");
         }
 
-        @Test
-        void shouldTreatOtherClientErrorsAsUnavailable() {
-            respondWithProblem(400, "Invalid request");
+        @ParameterizedTest
+        @ValueSource(ints = { 403, 429 })
+        void shouldTreatOtherClientErrorsAsUnavailable(int status) {
+            respondWithProblem(status, "Try again later");
 
             assertThatThrownBy(() -> client.transfer(REQUEST))
                     .isInstanceOf(AccountUnavailableException.class)
-                    .hasMessageContaining("400");
+                    .hasMessageContaining(String.valueOf(status));
         }
 
         @ParameterizedTest

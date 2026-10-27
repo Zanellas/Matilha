@@ -64,6 +64,9 @@ public class Transfer {
     private Instant updatedAt;
 
     @Column
+    private Instant claimedUntil;
+
+    @Column
     @Version
     private Long version;
 
@@ -119,6 +122,11 @@ public class Transfer {
         return this.sourceAccountNumber.equals(sourceAccountNumber)
                 && this.targetAccountNumber.equals(targetAccountNumber)
                 && this.amount.compareTo(amount) == 0;
+    }
+
+    public void claimUntil(Instant until) {
+        requirePending();
+        this.claimedUntil = until;
     }
 
 }

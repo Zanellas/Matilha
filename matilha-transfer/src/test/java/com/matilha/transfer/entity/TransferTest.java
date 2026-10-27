@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -154,6 +155,43 @@ class TransferTest {
         @Test
         void shouldNotMatchSwappedAccounts() {
             assertThat(transfer.matches(TARGET, SOURCE, AMOUNT)).isFalse();
+        }
+    }
+
+    @Nested
+    class Claim {
+
+        @Test
+        void shouldStartUnclaimed() {
+            assertThat(transfer.getClaimedUntil()).isNull();
+        }
+
+        @Test
+        void shouldClaimPendingTransfer() {
+            Instant until = Instant.parse("2026-10-27T12:05:00Z");
+
+            transfer.claimUntil(until);
+
+            assertThat(transfer.getClaimedUntil()).isEqualTo(until);
+            assertThat(transfer.getStatus()).isEqualTo(TransferStatus.PENDING);
+        }
+
+        @Test
+        void shouldRejectClaimingCompletedTransfer() {
+            transfer.complete();
+
+            assertThatThrownBy(() -> transfer.claimUntil(Instant.now()))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Only pending transfers can be finished");
+            assertThat(transfer.getClaimedUntil()).isNull();
+        }
+
+        @Test
+        void shouldRejectClaimingFailedTransfer() {
+            transfer.fail("Insufficient balance");
+
+            assertThatThrownBy(() -> transfer.claimUntil(Instant.now()))
+                    .isInstanceOf(BusinessException.class);
         }
     }
 

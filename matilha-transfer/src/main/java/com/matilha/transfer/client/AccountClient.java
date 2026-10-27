@@ -16,6 +16,9 @@ import com.matilha.transfer.dto.AccountTransferResponseDto;
 import com.matilha.transfer.exception.AccountTransferRejectedException;
 import com.matilha.transfer.exception.AccountUnavailableException;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Component
 public class AccountClient {
 
@@ -36,6 +39,10 @@ public class AccountClient {
                     .retrieve()
                     .body(AccountTransferResponseDto.class);
         } catch (HttpClientErrorException ex) {
+            if (ex.getStatusCode() == HttpStatus.BAD_REQUEST) {
+                log.error("Account service reject the request as invalid: {}", ex.getResponseBodyAsString());
+                throw new AccountTransferRejectedException("Invalid request sent to account service");
+            }
             if (ex.getStatusCode() == HttpStatus.NOT_FOUND || ex.getStatusCode() == HttpStatus.UNPROCESSABLE_CONTENT) {
                 throw new AccountTransferRejectedException(reasonFrom(ex));
             }
