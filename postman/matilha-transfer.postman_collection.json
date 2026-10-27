@@ -1,0 +1,740 @@
+{
+  "info": {
+    "name": "Matilha - Transfer",
+    "description": "Roteiro de testes do matilha-transfer contra o matilha-account, os dois rodando localmente com o perfil dev.\n\nRode as pastas 1 a 5 em ordem com o Collection Runner. A pasta 6 é manual: pare o account antes de rodar.\n\nAs requisições usam as contas de exemplo do perfil dev (10001 a 10005).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "accountUrl", "value": "http://localhost:8081" },
+    { "key": "transferUrl", "value": "http://localhost:8082" },
+    { "key": "amount", "value": "100.00" },
+    { "key": "successKey", "value": "" },
+    { "key": "transferId", "value": "" },
+    { "key": "sourceBalanceBefore", "value": "" },
+    { "key": "targetBalanceBefore", "value": "" },
+    { "key": "pendingTransferId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Preparação",
+      "item": [
+        {
+          "name": "Health do transfer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('transfer está UP', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{transferUrl}}/actuator/health",
+              "host": ["{{transferUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        },
+        {
+          "name": "Saldo inicial da 10001 (origem)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('conta encontrada', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('sourceBalanceBefore', pm.response.json().balance);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{accountUrl}}/accounts/10001",
+              "host": ["{{accountUrl}}"],
+              "path": ["accounts", "10001"]
+            }
+          }
+        },
+        {
+          "name": "Saldo inicial da 10002 (destino)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('conta encontrada', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('targetBalanceBefore', pm.response.json().balance);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{accountUrl}}/accounts/10002",
+              "host": ["{{accountUrl}}"],
+              "path": ["accounts", "10002"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Sucesso e idempotência",
+      "item": [
+        {
+          "name": "Transferência com sucesso (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// chave nova a cada execução; os próximos requests da pasta reutilizam a mesma",
+                  "pm.collectionVariables.set('successKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('transferência COMPLETED', () => pm.expect(body.status).to.eql('COMPLETED'));",
+                  "pm.test('Location aponta para a transferência', () => {",
+                  "    pm.expect(pm.response.headers.get('Location')).to.eql('/transfers/' + body.id);",
+                  "});",
+                  "pm.collectionVariables.set('transferId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{successKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": {{amount}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Reenvio com a mesma chave (mesma resposta)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('mesmo status HTTP da primeira vez (201)', () => pm.response.to.have.status(201));",
+                  "pm.test('devolve a MESMA transferência', () => {",
+                  "    pm.expect(body.id).to.eql(pm.collectionVariables.get('transferId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{successKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": {{amount}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Reenvio com valor no outro formato (100.0)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('100.0 e 100.00 contam como o mesmo pedido', () => {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('transferId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{successKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 100.0\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Mesma chave com valor diferente (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('explica que a chave já foi usada', () => {",
+                  "    pm.expect(pm.response.json().detail).to.eql('Idempotency key already used with different data');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{successKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 50.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Saldo da 10001 caiu UMA vez só",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cents = v => Math.round(Number(v) * 100);",
+                  "const before = cents(pm.collectionVariables.get('sourceBalanceBefore'));",
+                  "const amount = cents(pm.collectionVariables.get('amount'));",
+                  "pm.test('saldo = inicial - valor (os reenvios não moveram dinheiro)', () => {",
+                  "    pm.expect(cents(pm.response.json().balance)).to.eql(before - amount);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{accountUrl}}/accounts/10001",
+              "host": ["{{accountUrl}}"],
+              "path": ["accounts", "10001"]
+            }
+          }
+        },
+        {
+          "name": "Saldo da 10002 subiu UMA vez só",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cents = v => Math.round(Number(v) * 100);",
+                  "const before = cents(pm.collectionVariables.get('targetBalanceBefore'));",
+                  "const amount = cents(pm.collectionVariables.get('amount'));",
+                  "pm.test('saldo = inicial + valor', () => {",
+                  "    pm.expect(cents(pm.response.json().balance)).to.eql(before + amount);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{accountUrl}}/accounts/10002",
+              "host": ["{{accountUrl}}"],
+              "path": ["accounts", "10002"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Recusadas pelo account (422 FAILED)",
+      "item": [
+        {
+          "name": "Saldo insuficiente (10003 tem saldo 0)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('transferência FAILED com motivo', () => {",
+                  "    pm.expect(body.status).to.eql('FAILED');",
+                  "    pm.expect(body.failureReason).to.eql('Insufficient balance');",
+                  "    pm.expect(body.id).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10003\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 50.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Conta de destino inexistente (10009)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('transferência FAILED com motivo', () => {",
+                  "    pm.expect(body.status).to.eql('FAILED');",
+                  "    pm.expect(body.failureReason).to.include('10009');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10009\",\n  \"amount\": 10.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Conta de origem bloqueada (10004)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('transferência FAILED com motivo', () => {",
+                  "    pm.expect(body.status).to.eql('FAILED');",
+                  "    pm.expect(body.failureReason).to.eql('Account is not active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10004\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 10.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Conta de destino encerrada (10005)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('transferência FAILED com motivo', () => {",
+                  "    pm.expect(body.status).to.eql('FAILED');",
+                  "    pm.expect(body.failureReason).to.eql('Account is not active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10005\",\n  \"amount\": 10.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Consulta",
+      "item": [
+        {
+          "name": "Consultar a transferência criada (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('é a transferência da pasta 2, COMPLETED', () => {",
+                  "    pm.expect(body.id).to.eql(pm.collectionVariables.get('transferId'));",
+                  "    pm.expect(body.status).to.eql('COMPLETED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{transferUrl}}/transfers/{{transferId}}",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers", "{{transferId}}"]
+            }
+          }
+        },
+        {
+          "name": "Transferência inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('ProblemDetail com detail', () => {",
+                  "    pm.expect(pm.response.json().detail).to.include('Transfer not found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{transferUrl}}/transfers/{{$guid}}",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers", "{{$guid}}"]
+            }
+          }
+        },
+        {
+          "name": "Id que não é UUID (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{transferUrl}}/transfers/abc",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers", "abc"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Validação (400)",
+      "item": [
+        {
+          "name": "Sem o header Idempotency-Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 10.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Idempotency-Key que não é UUID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "abc" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 10.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Corpo inválido (conta com 4 dígitos, valor negativo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('lista os campos inválidos em errors', () => {",
+                  "    pm.expect(body.errors).to.have.property('sourceAccountNumber');",
+                  "    pm.expect(body.errors).to.have.property('amount');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"1000\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": -10.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Mesma conta na origem e no destino",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422 (regra da entidade, nem chega no account)', () => pm.response.to.have.status(422));",
+                  "pm.test('explica o motivo', () => {",
+                  "    pm.expect(pm.response.json().detail).to.eql('Source and target accounts must be different');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 10.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. MANUAL - Account fora do ar (202 PENDING)",
+      "description": "Antes de rodar esta pasta, PARE o matilha-account (Ctrl+C no terminal dele). Não rode esta pasta junto com as outras no Runner.",
+      "item": [
+        {
+          "name": "Transferência com o account parado (202)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('transferência PENDING, sem motivo de falha', () => {",
+                  "    pm.expect(body.status).to.eql('PENDING');",
+                  "    pm.expect(body.failureReason).to.be.null;",
+                  "});",
+                  "pm.test('Location para consultar depois', () => {",
+                  "    pm.expect(pm.response.headers.get('Location')).to.eql('/transfers/' + body.id);",
+                  "});",
+                  "pm.collectionVariables.set('pendingTransferId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 10.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{transferUrl}}/transfers",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers"]
+            }
+          }
+        },
+        {
+          "name": "Consultar a PENDING (continua PENDING mesmo com o account de volta)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ainda PENDING: falta o job de reenvio', () => {",
+                  "    pm.expect(pm.response.json().status).to.eql('PENDING');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{transferUrl}}/transfers/{{pendingTransferId}}",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers", "{{pendingTransferId}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
