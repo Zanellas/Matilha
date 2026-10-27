@@ -1,0 +1,36 @@
+name: matilha
+
+services:
+  template-db:
+    image: postgres:17
+    container_name: matilha-template-db
+    environment:
+      POSTGRES_DB: ${TEMPLATE_DB_NAME:?defina TEMPLATE_DB_NAME no .env}
+      POSTGRES_USER: ${TEMPLATE_DB_USERNAME:?defina TEMPLATE_DB_USERNAME no .env}
+      POSTGRES_PASSWORD: ${TEMPLATE_DB_PASSWORD:?defina TEMPLATE_DB_PASSWORD no .env}
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - template-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  template:
+    build: .
+    container_name: matilha-template
+    ports:
+      - "127.0.0.1:8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      TEMPLATE_DB_URL: jdbc:postgresql://template-db:5432/${TEMPLATE_DB_NAME:?defina TEMPLATE_DB_NAME no .env}
+      TEMPLATE_DB_USERNAME: ${TEMPLATE_DB_USERNAME:?defina TEMPLATE_DB_USERNAME no .env}
+      TEMPLATE_DB_PASSWORD: ${TEMPLATE_DB_PASSWORD:?defina TEMPLATE_DB_PASSWORD no .env}
+    depends_on:
+      template-db:
+        condition: service_healthy
+
+volumes:
+  template-db-data:
