@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: matilha-template
+
+  flyway:
+    ignore-migration-patterns: "*:future, repeatable:missing"
+
+  datasource:
+    url: ${TEMPLATE_DB_URL}
+    username: ${TEMPLATE_DB_USERNAME}
+    password: ${TEMPLATE_DB_PASSWORD}
+    hikari:
+      pool-name: template-pool
+      maximum-pool-size: ${TEMPLATE_DB_POOL_SIZE:10}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
+        serialization-mode: via-dto
+
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+  web:
+    error:
+      include-message: never
+      include-binding-errors: never
+      include-stacktrace: never
+      include-exception: false
+
+server:
+  port: 8083
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+info:
+  app:
+    name: matilha-template
+    description: Template service
