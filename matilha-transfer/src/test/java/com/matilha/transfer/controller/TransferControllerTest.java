@@ -99,15 +99,44 @@ class TransferControllerTest {
         }
 
         @Test
-        void shouldReturnUnprocessableWithReasonWhenFailed() throws Exception {
+        void shouldReturnProblemDetailWithTransferIdWhenFailed() throws Exception {
             when(transferService.create(eq(KEY), any()))
                     .thenReturn(response(TransferStatus.FAILED, "Insufficient balance"));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
                     .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.id").value(TRANSFER_ID.toString()))
-                    .andExpect(jsonPath("$.status").value("FAILED"))
-                    .andExpect(jsonPath("$.failureReason").value("Insufficient balance"));
+                    .andExpect(header().string("Content-Type", "application/problem+json"))
+                    .andExpect(header().doesNotExist("Location"))
+                    .andExpect(jsonPath("$.title").value("Transfer failed"))
+                    .andExpect(jsonPath("$.status").value(422))
+                    .andExpect(jsonPath("$.detail").value("Insufficient balance"))
+                    .andExpect(jsonPath("$.transferId").value(TRANSFER_ID.toString()))
+                    .andExpect(jsonPath("$.instance").value("/transfers"));
+        }
+
+        @Test
+        void shouldReturnSameProblemDetailWhenReplayingFailedTransfer() throws Exception {
+            when(transferService.create(eq(KEY), any()))
+                    .thenReturn(response(TransferStatus.FAILED, "Insufficient balance"));
+
+            for (int attempt = 0; attempt < 2; attempt++) {
+                mockMvc.perform(postTransfer(VALID_REQUEST))
+                        .andExpect(status().isUnprocessableContent())
+                        .andExpect(jsonPath("$.detail").value("Insufficient balance"))
+                        .andExpect(jsonPath("$.transferId").value(TRANSFER_ID.toString()));
+            }
+        }
+
+        @Test
+        void shouldUseSameFormatForFailedTransferAndOtherBusinessErrors() throws Exception {
+            when(transferService.create(eq(KEY), any()))
+                    .thenThrow(new BusinessException("Idempotency key already used with different data"));
+
+            mockMvc.perform(postTransfer(VALID_REQUEST))
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(header().string("Content-Type", "application/problem+json"))
+                    .andExpect(jsonPath("$.detail").exists())
+                    .andExpect(jsonPath("$.transferId").doesNotExist());
         }
 
         @Test

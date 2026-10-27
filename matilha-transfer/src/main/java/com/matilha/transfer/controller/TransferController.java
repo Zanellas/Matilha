@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.matilha.transfer.dto.CreateTransferRequestDto;
 import com.matilha.transfer.dto.TransferResponseDto;
 import com.matilha.transfer.entity.TransferStatus;
+import com.matilha.transfer.exception.TransferFailedException;
 import com.matilha.transfer.service.TransferService;
 
 import jakarta.validation.Valid;
@@ -30,9 +31,12 @@ public class TransferController {
 
     @PostMapping
     public ResponseEntity<TransferResponseDto> create(
-            @RequestHeader("Idempotency-key") UUID idempotencyKey,
+            @RequestHeader("Idempotency-Key") UUID idempotencyKey,
             @RequestBody @Valid CreateTransferRequestDto request) {
         TransferResponseDto response = transferService.create(idempotencyKey, request);
+        if (response.status() == TransferStatus.FAILED) {
+            throw new TransferFailedException(response);
+        }
         return ResponseEntity.status(statusFor(response.status()))
                 .location(URI.create("/transfers/" + response.id()))
                 .body(response);

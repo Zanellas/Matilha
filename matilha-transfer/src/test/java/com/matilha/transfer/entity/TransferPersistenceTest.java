@@ -4,7 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -20,12 +29,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import com.matilha.transfer.repository.TransferRepository;
+import com.matilha.transfer.service.TransferService;
 
 /**
  * Roda contra um PostgreSQL real com as migrações do Flyway, por isso precisa do Docker.
  * Se a migração não bater com a entidade, o contexto nem sobe (ddl-auto: validate).
  */
-@SpringBootTest
+@SpringBootTest(properties = "matilha.reconciler.enabled=false")
 @Testcontainers
 class TransferPersistenceTest {
 
@@ -44,6 +54,9 @@ class TransferPersistenceTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private TransferService transferService;
 
     @BeforeEach
     void cleanDatabase() {
@@ -145,6 +158,146 @@ class TransferPersistenceTest {
                     .isInstanceOf(DataIntegrityViolationException.class)
                     .hasMessageContaining("uk_transfers_idempotency_key");
             assertThat(transferRepository.count()).isEqualTo(1);
+        }
+    }
+
+    /**
+     * A busca do reconciliador (FOR UPDATE SKIP LOCKED) e a reserva com prazo (claimed_until).
+     * Só dá para testar contra o PostgreSQL de verdade.
+     */
+    @Nested
+    class Reconciliation {
+
+        private static final Duration LEASE = Duration.ofMinutes(5);
+
+        private Instant cutoff;
+
+        @BeforeEach
+        void setUp() {
+            cutoff = Instant.now().minusSeconds(30);
+        }
+
+        /** Salva uma PENDING e "envelhece" a criação direto no banco (o created_at é @CreationTimestamp). */
+        private UUID pendingCreated(Duration ago) {
+            Transfer saved = transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
+            jdbcTemplate.update("UPDATE transfers SET created_at = ? WHERE id = ?",
+                    Timestamp.from(Instant.now().minus(ago)), saved.getId());
+            return saved.getId();
+        }
+
+        private void claimedUntil(UUID id, Instant until) {
+            jdbcTemplate.update("UPDATE transfers SET claimed_until = ? WHERE id = ?", Timestamp.from(until), id);
+        }
+
+        private static List<UUID> ids(List<Transfer> transfers) {
+            return transfers.stream().map(Transfer::getId).toList();
+        }
+
+        @Test
+        void shouldClaimOnlyOldUnclaimedPendingTransfersOldestFirst() {
+            UUID old = pendingCreated(Duration.ofMinutes(10));
+            UUID older = pendingCreated(Duration.ofMinutes(20));
+            UUID expiredClaim = pendingCreated(Duration.ofMinutes(15));
+            claimedUntil(expiredClaim, Instant.now().minusSeconds(60));
+            UUID activeClaim = pendingCreated(Duration.ofMinutes(25));
+            claimedUntil(activeClaim, Instant.now().plus(LEASE));
+            pendingCreated(Duration.ofSeconds(5));
+            UUID completed = pendingCreated(Duration.ofMinutes(30));
+            jdbcTemplate.update("UPDATE transfers SET status = 'COMPLETED' WHERE id = ?", completed);
+
+            List<Transfer> claimed = transferService.claimPending(cutoff, LEASE, 20);
+
+            assertThat(ids(claimed)).containsExactly(older, expiredClaim, old);
+        }
+
+        @Test
+        void shouldRespectTheLimit() {
+            UUID oldest = pendingCreated(Duration.ofMinutes(30));
+            UUID middle = pendingCreated(Duration.ofMinutes(20));
+            pendingCreated(Duration.ofMinutes(10));
+
+            List<Transfer> claimed = transferService.claimPending(cutoff, LEASE, 2);
+
+            assertThat(ids(claimed)).containsExactly(oldest, middle);
+        }
+
+        @Test
+        void shouldSaveTheLeaseInTheDatabase() {
+            UUID id = pendingCreated(Duration.ofMinutes(10));
+            Instant before = Instant.now();
+
+            transferService.claimPending(cutoff, LEASE, 20);
+
+            Instant claimedUntil = reload(id).getClaimedUntil();
+            assertThat(claimedUntil).isBetween(before.plus(LEASE).minusSeconds(1), Instant.now().plus(LEASE));
+        }
+
+        @Test
+        void shouldNotClaimTheSameTransferTwiceWhileTheLeaseIsValid() {
+            UUID id = pendingCreated(Duration.ofMinutes(10));
+
+            List<Transfer> first = transferService.claimPending(cutoff, LEASE, 20);
+            List<Transfer> second = transferService.claimPending(cutoff, LEASE, 20);
+
+            assertThat(ids(first)).containsExactly(id);
+            assertThat(second).isEmpty();
+        }
+
+        @Test
+        void shouldLetTheClaimedTransferBeProcessedAfterwards() {
+            UUID id = pendingCreated(Duration.ofMinutes(10));
+            Transfer claimed = transferService.claimPending(cutoff, LEASE, 20).getFirst();
+
+            claimed.complete();
+            transferRepository.save(claimed);
+
+            assertThat(reload(id).getStatus()).isEqualTo(TransferStatus.COMPLETED);
+        }
+
+        /**
+         * Simula duas réplicas buscando ao mesmo tempo. A primeira trava 2 linhas e segura a transação aberta;
+         * a segunda precisa pular essas 2 na hora (sem esperar) e pegar as outras.
+         */
+        @Test
+        void shouldSkipRowsLockedByAnotherTransaction() throws Exception {
+            UUID first = pendingCreated(Duration.ofMinutes(40));
+            UUID second = pendingCreated(Duration.ofMinutes(30));
+            UUID third = pendingCreated(Duration.ofMinutes(20));
+            UUID fourth = pendingCreated(Duration.ofMinutes(10));
+
+            CountDownLatch locked = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+            try {
+                Future<List<UUID>> replicaA = executor.submit(() -> transactionTemplate.execute(status -> {
+                    List<UUID> rows = ids(transferRepository.findPendingToClaim(cutoff, Instant.now(), 2));
+                    locked.countDown();
+                    await(release);
+                    return rows;
+                }));
+                assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
+
+                long start = System.nanoTime();
+                List<UUID> replicaB = transactionTemplate.execute(
+                        status -> ids(transferRepository.findPendingToClaim(cutoff, Instant.now(), 10)));
+                Duration waited = Duration.ofNanos(System.nanoTime() - start);
+
+                release.countDown();
+                assertThat(replicaA.get(10, TimeUnit.SECONDS)).containsExactly(first, second);
+                assertThat(replicaB).containsExactly(third, fourth);
+                assertThat(waited).isLessThan(Duration.ofSeconds(2));
+            } finally {
+                release.countDown();
+                executor.shutdownNow();
+            }
+        }
+
+        private static void await(CountDownLatch latch) {
+            try {
+                latch.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 

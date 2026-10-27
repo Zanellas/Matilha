@@ -1,10 +1,14 @@
 package com.matilha.transfer.service;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.matilha.transfer.client.AccountClient;
 import com.matilha.transfer.dto.AccountTransferRequestDto;
@@ -43,6 +47,23 @@ public class TransferService {
             return replay(winner, request);
         }
 
+        return TransferResponseDto.from(process(transfer));
+    }
+
+    private TransferResponseDto replay(Transfer existing, CreateTransferRequestDto request) {
+        if (!existing.matches(request.sourceAccountNumber(), request.targetAccountNumber(), request.amount())) {
+            throw new BusinessException("Idempotency key already used with different data");
+        }
+        return TransferResponseDto.from(existing);
+    }
+
+    public TransferResponseDto findById(UUID id) {
+        return transferRepository.findById(id)
+                .map(TransferResponseDto::from)
+                .orElseThrow(() -> new TransferNotFoundException(id));
+    }
+
+    public Transfer process(Transfer transfer) {
         AccountTransferRequestDto accountRequest = new AccountTransferRequestDto(
                 transfer.getId(),
                 transfer.getSourceAccountNumber(),
@@ -58,20 +79,15 @@ public class TransferService {
             log.warn("Account service unavailable, transfer {} stays PENDING", transfer.getId(), ex);
         }
 
-        return TransferResponseDto.from(transferRepository.save(transfer));
+        return transferRepository.save(transfer);
     }
 
-    private TransferResponseDto replay(Transfer existing, CreateTransferRequestDto request) {
-        if (!existing.matches(request.sourceAccountNumber(), request.targetAccountNumber(), request.amount())) {
-            throw new BusinessException("Idempotency key already used with different data");
-        }
-        return TransferResponseDto.from(existing);
-    }
-
-    public TransferResponseDto findById(UUID id) {
-        return transferRepository.findById(id)
-                .map(TransferResponseDto::from)
-                .orElseThrow(() -> new TransferNotFoundException(id));
+    @Transactional
+    public List<Transfer> claimPending(Instant createdBefore, Duration lease, int limit) {
+        Instant now = Instant.now();
+        List<Transfer> claimed = transferRepository.findPendingToClaim(createdBefore, now, limit);
+        claimed.forEach(transfer -> transfer.claimUntil(now.plus(lease)));
+        return claimed;
     }
 
 }

@@ -301,7 +301,7 @@
       ]
     },
     {
-      "name": "3. Recusadas pelo account (422 FAILED)",
+      "name": "3. Recusadas pelo account (422 ProblemDetail)",
       "item": [
         {
           "name": "Saldo insuficiente (10003 tem saldo 0)",
@@ -313,10 +313,11 @@
                 "exec": [
                   "const body = pm.response.json();",
                   "pm.test('status 422', () => pm.response.to.have.status(422));",
-                  "pm.test('transferência FAILED com motivo', () => {",
-                  "    pm.expect(body.status).to.eql('FAILED');",
-                  "    pm.expect(body.failureReason).to.eql('Insufficient balance');",
-                  "    pm.expect(body.id).to.be.a('string');",
+                  "pm.test('ProblemDetail de transferência recusada', () => {",
+                  "    pm.expect(body.title).to.eql('Transfer failed');",
+                  "    pm.expect(body.status).to.eql(422);",
+                  "    pm.expect(body.transferId).to.be.a('string');",
+                  "    pm.expect(body.detail).to.eql('Insufficient balance');",
                   "});"
                 ]
               }
@@ -350,9 +351,11 @@
                 "exec": [
                   "const body = pm.response.json();",
                   "pm.test('status 422', () => pm.response.to.have.status(422));",
-                  "pm.test('transferência FAILED com motivo', () => {",
-                  "    pm.expect(body.status).to.eql('FAILED');",
-                  "    pm.expect(body.failureReason).to.include('10009');",
+                  "pm.test('ProblemDetail de transferência recusada', () => {",
+                  "    pm.expect(body.title).to.eql('Transfer failed');",
+                  "    pm.expect(body.status).to.eql(422);",
+                  "    pm.expect(body.transferId).to.be.a('string');",
+                  "    pm.expect(body.detail).to.include('10009');",
                   "});"
                 ]
               }
@@ -386,9 +389,11 @@
                 "exec": [
                   "const body = pm.response.json();",
                   "pm.test('status 422', () => pm.response.to.have.status(422));",
-                  "pm.test('transferência FAILED com motivo', () => {",
-                  "    pm.expect(body.status).to.eql('FAILED');",
-                  "    pm.expect(body.failureReason).to.eql('Account is not active');",
+                  "pm.test('ProblemDetail de transferência recusada', () => {",
+                  "    pm.expect(body.title).to.eql('Transfer failed');",
+                  "    pm.expect(body.status).to.eql(422);",
+                  "    pm.expect(body.transferId).to.be.a('string');",
+                  "    pm.expect(body.detail).to.eql('Account is not active');",
                   "});"
                 ]
               }
@@ -422,9 +427,11 @@
                 "exec": [
                   "const body = pm.response.json();",
                   "pm.test('status 422', () => pm.response.to.have.status(422));",
-                  "pm.test('transferência FAILED com motivo', () => {",
-                  "    pm.expect(body.status).to.eql('FAILED');",
-                  "    pm.expect(body.failureReason).to.eql('Account is not active');",
+                  "pm.test('ProblemDetail de transferência recusada', () => {",
+                  "    pm.expect(body.title).to.eql('Transfer failed');",
+                  "    pm.expect(body.status).to.eql(422);",
+                  "    pm.expect(body.transferId).to.be.a('string');",
+                  "    pm.expect(body.detail).to.eql('Account is not active');",
                   "});"
                 ]
               }
@@ -667,7 +674,7 @@
     },
     {
       "name": "6. MANUAL - Account fora do ar (202 PENDING)",
-      "description": "Antes de rodar esta pasta, PARE o matilha-account (Ctrl+C no terminal dele). Não rode esta pasta junto com as outras no Runner.",
+      "description": "1) PARE o matilha-account (Ctrl+C) e rode a primeira requisição: 202 PENDING.\n2) Suba o account de novo, espere ~1min30 e rode a segunda: o reconciliador já terá marcado COMPLETED.\nNão rode esta pasta junto com as outras no Runner.",
       "item": [
         {
           "name": "Transferência com o account parado (202)",
@@ -710,16 +717,17 @@
           }
         },
         {
-          "name": "Consultar a PENDING (continua PENDING mesmo com o account de volta)",
+          "name": "Consultar depois do reconciliador (COMPLETED)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// Suba o account de novo e espere ~1min30 antes de rodar (min-age 30s + intervalo de 60s).",
                   "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('ainda PENDING: falta o job de reenvio', () => {",
-                  "    pm.expect(pm.response.json().status).to.eql('PENDING');",
+                  "pm.test('o reconciliador resolveu a PENDING', () => {",
+                  "    pm.expect(pm.response.json().status).to.eql('COMPLETED');",
                   "});"
                 ]
               }

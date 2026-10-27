@@ -68,3 +68,7 @@ info:
 matilha:
   account:
     base-url: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
+  reconciler:
+    interval: PT60S
+    min-age: PT30S
+    lease: PT5M
