@@ -31,6 +31,7 @@ public class TransferService {
 
     private final TransferRepository transferRepository;
     private final AccountClient accountClient;
+    private final TransferFinisher transferFinisher;
 
     public TransferResponseDto create(UUID idempotencyKey, CreateTransferRequestDto request) {
         Optional<Transfer> existing = transferRepository.findByIdempotencyKey(idempotencyKey);
@@ -72,14 +73,14 @@ public class TransferService {
 
         try {
             accountClient.transfer(accountRequest);
-            transfer.complete();
         } catch (AccountTransferRejectedException ex) {
-            transfer.fail(ex.getCode(), ex.getMessage());
+            return transferFinisher.fail(transfer, ex.getCode(), ex.getMessage());
         } catch (AccountUnavailableException ex) {
             log.warn("Account service unavailable, transfer {} stays PENDING", transfer.getId(), ex);
+            return transfer;
         }
 
-        return transferRepository.save(transfer);
+        return transferFinisher.complete(transfer);
     }
 
     @Transactional
