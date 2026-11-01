@@ -52,6 +52,10 @@ public class Transfer {
     @Enumerated(EnumType.STRING)
     private TransferStatus status;
 
+    @Column(length = 30)
+    @Enumerated(EnumType.STRING)
+    private FailureCode failureCode;
+
     @Column
     private String failureReason;
 
@@ -90,9 +94,14 @@ public class Transfer {
         this.status = TransferStatus.COMPLETED;
     }
 
-    public void fail(String reason) {
+    public void fail(FailureCode code, String reason) {
         requirePending();
-        this.failureReason = requireNotBlank(reason, "reason");
+        if (code == null) {
+            throw new BusinessException("failureCode must not be null");
+        }
+        String validReason = requireNotBlank(reason, "reason");
+        this.failureCode = code;
+        this.failureReason = validReason;
         this.status = TransferStatus.FAILED;
     }
 

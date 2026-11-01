@@ -29,6 +29,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 import com.matilha.transfer.dto.CreateTransferRequestDto;
 import com.matilha.transfer.dto.TransferResponseDto;
+import com.matilha.transfer.entity.FailureCode;
 import com.matilha.transfer.entity.TransferStatus;
 import com.matilha.transfer.exception.BusinessException;
 import com.matilha.transfer.exception.TransferNotFoundException;
@@ -54,9 +55,14 @@ class TransferControllerTest {
     @MockitoBean
     private TransferService transferService;
 
-    private static TransferResponseDto response(TransferStatus status, String failureReason) {
+    private static TransferResponseDto response(TransferStatus status) {
         return new TransferResponseDto(TRANSFER_ID, status, "10001", "10002", new BigDecimal("250.50"),
-                failureReason, Instant.parse("2026-10-26T12:00:00Z"));
+                null, null, Instant.parse("2026-10-26T12:00:00Z"));
+    }
+
+    private static TransferResponseDto failed(FailureCode code, String reason) {
+        return new TransferResponseDto(TRANSFER_ID, TransferStatus.FAILED, "10001", "10002", new BigDecimal("250.50"),
+                code, reason, Instant.parse("2026-10-26T12:00:00Z"));
     }
 
     private static String requestWith(String field, String jsonValue) {
@@ -75,7 +81,7 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnCreatedWhenCompleted() throws Exception {
-            when(transferService.create(eq(KEY), any())).thenReturn(response(TransferStatus.COMPLETED, null));
+            when(transferService.create(eq(KEY), any())).thenReturn(response(TransferStatus.COMPLETED));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
                     .andExpect(status().isCreated())
@@ -90,7 +96,7 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnAcceptedWhenPending() throws Exception {
-            when(transferService.create(eq(KEY), any())).thenReturn(response(TransferStatus.PENDING, null));
+            when(transferService.create(eq(KEY), any())).thenReturn(response(TransferStatus.PENDING));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
                     .andExpect(status().isAccepted())
@@ -101,7 +107,7 @@ class TransferControllerTest {
         @Test
         void shouldReturnProblemDetailWithTransferIdWhenFailed() throws Exception {
             when(transferService.create(eq(KEY), any()))
-                    .thenReturn(response(TransferStatus.FAILED, "Insufficient balance"));
+                    .thenReturn(failed(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance"));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
                     .andExpect(status().isUnprocessableContent())
@@ -110,19 +116,31 @@ class TransferControllerTest {
                     .andExpect(jsonPath("$.title").value("Transfer failed"))
                     .andExpect(jsonPath("$.status").value(422))
                     .andExpect(jsonPath("$.detail").value("Insufficient balance"))
+                    .andExpect(jsonPath("$.code").value("INSUFFICIENT_BALANCE"))
                     .andExpect(jsonPath("$.transferId").value(TRANSFER_ID.toString()))
                     .andExpect(jsonPath("$.instance").value("/transfers"));
         }
 
         @Test
+        void shouldUseTheTransferCodeNotTheAccountText() throws Exception {
+            when(transferService.create(eq(KEY), any()))
+                    .thenReturn(failed(FailureCode.REJECTED_BY_ACCOUNT, "Some new message from account"));
+
+            mockMvc.perform(postTransfer(VALID_REQUEST))
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.code").value("REJECTED_BY_ACCOUNT"));
+        }
+
+        @Test
         void shouldReturnSameProblemDetailWhenReplayingFailedTransfer() throws Exception {
             when(transferService.create(eq(KEY), any()))
-                    .thenReturn(response(TransferStatus.FAILED, "Insufficient balance"));
+                    .thenReturn(failed(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance"));
 
             for (int attempt = 0; attempt < 2; attempt++) {
                 mockMvc.perform(postTransfer(VALID_REQUEST))
                         .andExpect(status().isUnprocessableContent())
                         .andExpect(jsonPath("$.detail").value("Insufficient balance"))
+                        .andExpect(jsonPath("$.code").value("INSUFFICIENT_BALANCE"))
                         .andExpect(jsonPath("$.transferId").value(TRANSFER_ID.toString()));
             }
         }
@@ -136,12 +154,13 @@ class TransferControllerTest {
                     .andExpect(status().isUnprocessableContent())
                     .andExpect(header().string("Content-Type", "application/problem+json"))
                     .andExpect(jsonPath("$.detail").exists())
-                    .andExpect(jsonPath("$.transferId").doesNotExist());
+                    .andExpect(jsonPath("$.transferId").doesNotExist())
+                    .andExpect(jsonPath("$.code").doesNotExist());
         }
 
         @Test
         void shouldPassKeyAndBodyToService() throws Exception {
-            when(transferService.create(any(), any())).thenReturn(response(TransferStatus.COMPLETED, null));
+            when(transferService.create(any(), any())).thenReturn(response(TransferStatus.COMPLETED));
 
             mockMvc.perform(postTransfer(VALID_REQUEST));
 
@@ -151,7 +170,7 @@ class TransferControllerTest {
 
         @Test
         void shouldAcceptHeaderNameInAnyCase() throws Exception {
-            when(transferService.create(eq(KEY), any())).thenReturn(response(TransferStatus.COMPLETED, null));
+            when(transferService.create(eq(KEY), any())).thenReturn(response(TransferStatus.COMPLETED));
 
             mockMvc.perform(post("/transfers")
                     .header("idempotency-key", KEY.toString())
@@ -260,12 +279,24 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnTransfer() throws Exception {
-            when(transferService.findById(TRANSFER_ID)).thenReturn(response(TransferStatus.PENDING, null));
+            when(transferService.findById(TRANSFER_ID)).thenReturn(response(TransferStatus.PENDING));
 
             mockMvc.perform(get("/transfers/{id}", TRANSFER_ID))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.id").value(TRANSFER_ID.toString()))
                     .andExpect(jsonPath("$.status").value("PENDING"));
+        }
+
+        @Test
+        void shouldReturnFailedTransferWithCodeAndReason() throws Exception {
+            when(transferService.findById(TRANSFER_ID))
+                    .thenReturn(failed(FailureCode.ACCOUNT_INACTIVE, "Account is not active"));
+
+            mockMvc.perform(get("/transfers/{id}", TRANSFER_ID))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("FAILED"))
+                    .andExpect(jsonPath("$.failureCode").value("ACCOUNT_INACTIVE"))
+                    .andExpect(jsonPath("$.failureReason").value("Account is not active"));
         }
 
         @Test

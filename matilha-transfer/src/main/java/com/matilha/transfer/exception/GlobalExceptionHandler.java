@@ -55,6 +55,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
         problem.setTitle("Transfer failed");
         problem.setProperty("transferId", ex.getTransfer().id());
+        problem.setProperty("code", ex.getTransfer().failureCode().name());
         return problem;
     }
 

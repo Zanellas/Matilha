@@ -3,6 +3,7 @@ package com.matilha.transfer.dto;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.matilha.transfer.entity.FailureCode;
 import com.matilha.transfer.entity.Transfer;
 
 public record TransferEvent(
@@ -14,7 +15,7 @@ public record TransferEvent(
         String sourceAccountNumber,
         String targetAccountNumber,
         String amount,
-        String failureReason) {
+        FailureCode failureCode) {
 
     public static final String COMPLETED = "TransferCompleted";
     public static final String FAILED = "TransferFailed";
@@ -30,7 +31,7 @@ public record TransferEvent(
                 transfer.getSourceAccountNumber(),
                 transfer.getTargetAccountNumber(),
                 transfer.getAmount().toPlainString(),
-                transfer.getFailureReason());
+                transfer.getFailureCode());
     }
 
     private static String typeFor(Transfer transfer) {

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.matilha.transfer.entity.FailureCode;
 import com.matilha.transfer.entity.Transfer;
 import com.matilha.transfer.entity.TransferStatus;
 
@@ -13,6 +14,7 @@ public record TransferResponseDto(
         String sourceAccountNumber,
         String targetAccountNumber,
         BigDecimal amount,
+        FailureCode failureCode,
         String failureReason,
         Instant createdAt) {
 
@@ -23,6 +25,7 @@ public record TransferResponseDto(
                 transfer.getSourceAccountNumber(),
                 transfer.getTargetAccountNumber(),
                 transfer.getAmount(),
+                transfer.getFailureCode(),
                 transfer.getFailureReason(),
                 transfer.getCreatedAt());
     }

@@ -188,7 +188,7 @@ class TransferTest {
 
         @Test
         void shouldRejectClaimingFailedTransfer() {
-            transfer.fail("Insufficient balance");
+            transfer.fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance");
 
             assertThatThrownBy(() -> transfer.claimUntil(Instant.now()))
                     .isInstanceOf(BusinessException.class);
@@ -204,6 +204,7 @@ class TransferTest {
 
             assertThat(transfer.getStatus()).isEqualTo(TransferStatus.COMPLETED);
             assertThat(transfer.getFailureReason()).isNull();
+            assertThat(transfer.getFailureCode()).isNull();
         }
 
         @Test
@@ -218,7 +219,7 @@ class TransferTest {
 
         @Test
         void shouldRejectCompletingFailedTransfer() {
-            transfer.fail("Insufficient balance");
+            transfer.fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance");
 
             assertThatThrownBy(transfer::complete)
                     .isInstanceOf(BusinessException.class)
@@ -231,42 +232,56 @@ class TransferTest {
     class Fail {
 
         @Test
-        void shouldFailPendingTransferWithReason() {
-            transfer.fail("Insufficient balance");
+        void shouldFailPendingTransferWithCodeAndReason() {
+            transfer.fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance");
 
             assertThat(transfer.getStatus()).isEqualTo(TransferStatus.FAILED);
+            assertThat(transfer.getFailureCode()).isEqualTo(FailureCode.INSUFFICIENT_BALANCE);
             assertThat(transfer.getFailureReason()).isEqualTo("Insufficient balance");
         }
 
+        @Test
+        void shouldRejectNullCode() {
+            assertThatThrownBy(() -> transfer.fail(null, "Insufficient balance"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("failureCode must not be null");
+            assertThat(transfer.getStatus()).isEqualTo(TransferStatus.PENDING);
+            assertThat(transfer.getFailureReason()).isNull();
+        }
+
+        /** Uma recusa não pode deixar a entidade pela metade: nem o código fica gravado. */
         @ParameterizedTest
         @NullAndEmptySource
         @ValueSource(strings = { "   " })
         void shouldRejectBlankReason(String reason) {
-            assertThatThrownBy(() -> transfer.fail(reason))
+            assertThatThrownBy(() -> transfer.fail(FailureCode.INSUFFICIENT_BALANCE, reason))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("reason must not be blank");
             assertThat(transfer.getStatus()).isEqualTo(TransferStatus.PENDING);
             assertThat(transfer.getFailureReason()).isNull();
+            assertThat(transfer.getFailureCode()).isNull();
         }
 
         @Test
         void shouldRejectFailingCompletedTransfer() {
             transfer.complete();
 
-            assertThatThrownBy(() -> transfer.fail("Insufficient balance"))
+            assertThatThrownBy(() -> transfer.fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance"))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Only pending transfers can be finished");
             assertThat(transfer.getStatus()).isEqualTo(TransferStatus.COMPLETED);
             assertThat(transfer.getFailureReason()).isNull();
+            assertThat(transfer.getFailureCode()).isNull();
         }
 
         @Test
         void shouldRejectFailingFailedTransfer() {
-            transfer.fail("Insufficient balance");
+            transfer.fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance");
 
-            assertThatThrownBy(() -> transfer.fail("Account not found"))
+            assertThatThrownBy(() -> transfer.fail(FailureCode.ACCOUNT_NOT_FOUND, "Account not found"))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Only pending transfers can be finished");
+            assertThat(transfer.getFailureCode()).isEqualTo(FailureCode.INSUFFICIENT_BALANCE);
             assertThat(transfer.getFailureReason()).isEqualTo("Insufficient balance");
         }
     }

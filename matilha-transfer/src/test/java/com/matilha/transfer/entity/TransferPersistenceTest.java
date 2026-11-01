@@ -18,6 +18,8 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -58,9 +60,13 @@ class TransferPersistenceTest {
     @Autowired
     private TransferService transferService;
 
+    /**
+     * Apaga com SQL, e não com deleteAll(): as linhas inseridas direto pelo JdbcTemplate ficam com version nulo,
+     * e o Spring Data trata entidade com @Version nulo como nova, então o delete dela não faz nada.
+     */
     @BeforeEach
     void cleanDatabase() {
-        transferRepository.deleteAll();
+        jdbcTemplate.update("DELETE FROM transfers");
     }
 
     private static Transfer newTransfer(UUID key, String amount) {
@@ -103,6 +109,7 @@ class TransferPersistenceTest {
             assertThat(loaded.getAmount().scale()).isEqualTo(2);
             assertThat(loaded.getStatus()).isEqualTo(TransferStatus.PENDING);
             assertThat(loaded.getFailureReason()).isNull();
+            assertThat(loaded.getFailureCode()).isNull();
             assertThat(loaded.getCreatedAt()).isNotNull();
             assertThat(loaded.getVersion()).isZero();
         }
@@ -120,14 +127,18 @@ class TransferPersistenceTest {
         }
 
         @Test
-        void shouldPersistFailedTransferWithReason() {
+        void shouldPersistFailedTransferWithCodeAndReason() {
             Transfer saved = transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
 
-            transactionTemplate.executeWithoutResult(status -> reload(saved.getId()).fail("Insufficient balance"));
+            transactionTemplate.executeWithoutResult(status -> reload(saved.getId())
+                    .fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance"));
 
             Transfer loaded = reload(saved.getId());
             assertThat(loaded.getStatus()).isEqualTo(TransferStatus.FAILED);
+            assertThat(loaded.getFailureCode()).isEqualTo(FailureCode.INSUFFICIENT_BALANCE);
             assertThat(loaded.getFailureReason()).isEqualTo("Insufficient balance");
+            assertThat(jdbcTemplate.queryForObject("SELECT failure_code FROM transfers WHERE id = ?",
+                    String.class, saved.getId())).isEqualTo("INSUFFICIENT_BALANCE");
         }
 
         @Test
@@ -310,6 +321,44 @@ class TransferPersistenceTest {
                                            amount, status, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, now())
                     """, UUID.randomUUID(), UUID.randomUUID(), source, target, new BigDecimal(amount), status);
+        }
+
+        private void insertWithFailureCode(String status, String failureCode) {
+            jdbcTemplate.update("""
+                    INSERT INTO transfers (id, idempotency_key, source_account_number, target_account_number,
+                                           amount, status, failure_code, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, now())
+                    """, UUID.randomUUID(), UUID.randomUUID(), SOURCE, TARGET, new BigDecimal("10.00"),
+                    status, failureCode);
+        }
+
+        @Test
+        void shouldAcceptFailedRowWithCode() {
+            insertWithFailureCode("FAILED", "INSUFFICIENT_BALANCE");
+
+            assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM transfers", Integer.class)).isEqualTo(1);
+        }
+
+        @Test
+        void shouldRejectUnknownFailureCode() {
+            assertThatThrownBy(() -> insertWithFailureCode("FAILED", "TIMEOUT"))
+                    .isInstanceOf(DataIntegrityViolationException.class)
+                    .hasMessageContaining("ck_transfers_failure_code");
+        }
+
+        @Test
+        void shouldRejectFailedRowWithoutCode() {
+            assertThatThrownBy(() -> insertWithFailureCode("FAILED", null))
+                    .isInstanceOf(DataIntegrityViolationException.class)
+                    .hasMessageContaining("ck_transfers_failure_code_when_failed");
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = { "PENDING", "COMPLETED" })
+        void shouldRejectCodeOnTransferThatDidNotFail(String status) {
+            assertThatThrownBy(() -> insertWithFailureCode(status, "INSUFFICIENT_BALANCE"))
+                    .isInstanceOf(DataIntegrityViolationException.class)
+                    .hasMessageContaining("ck_transfers_failure_code_when_failed");
         }
 
         @Test

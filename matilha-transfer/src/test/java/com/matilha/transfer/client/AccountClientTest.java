@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
@@ -25,6 +26,7 @@ import org.springframework.web.client.RestClientException;
 
 import com.matilha.transfer.dto.AccountTransferRequestDto;
 import com.matilha.transfer.dto.AccountTransferResponseDto;
+import com.matilha.transfer.entity.FailureCode;
 import com.matilha.transfer.exception.AccountTransferRejectedException;
 import com.matilha.transfer.exception.AccountUnavailableException;
 import com.sun.net.httpserver.HttpServer;
@@ -103,6 +105,12 @@ class AccountClientTest {
         respond(status, "application/problem+json", """
                 {"type": "about:blank", "status": %d, "detail": "%s", "instance": "/internal/transfers"}
                 """.formatted(status, detail));
+    }
+
+    private void respondWithProblem(int status, String detail, String code) {
+        respond(status, "application/problem+json", """
+                {"type": "about:blank", "status": %d, "detail": "%s", "instance": "/internal/transfers", "code": "%s"}
+                """.formatted(status, detail, code));
     }
 
     private static void sleep(long millis) {
@@ -226,6 +234,86 @@ class AccountClientTest {
             assertThatThrownBy(() -> client.transfer(REQUEST))
                     .isInstanceOf(AccountTransferRejectedException.class)
                     .hasMessage("Rejected by account service (422)");
+        }
+    }
+
+    /**
+     * O code do Problem Details é o contrato com o account. O detail é texto para gente e pode mudar.
+     */
+    @Nested
+    class FailureCodes {
+
+        @ParameterizedTest
+        @CsvSource({
+                "404, Account 10002 not found, ACCOUNT_NOT_FOUND, ACCOUNT_NOT_FOUND",
+                "422, Insufficient balance, INSUFFICIENT_BALANCE, INSUFFICIENT_BALANCE",
+                "422, Account is not active, ACCOUNT_INACTIVE, ACCOUNT_INACTIVE" })
+        void shouldReadKnownCodeFromAccount(int status, String detail, String accountCode, FailureCode expected) {
+            respondWithProblem(status, detail, accountCode);
+
+            assertThatThrownBy(() -> client.transfer(REQUEST))
+                    .isInstanceOf(AccountTransferRejectedException.class)
+                    .hasMessage(detail)
+                    .hasFieldOrPropertyWithValue("code", expected);
+        }
+
+        @Test
+        void shouldUseGenericCodeWhenAccountCodeIsUnknown() {
+            respondWithProblem(422, "Transfer already processed with different data", "BUSINESS_RULE_VIOLATION");
+
+            assertThatThrownBy(() -> client.transfer(REQUEST))
+                    .isInstanceOf(AccountTransferRejectedException.class)
+                    .hasMessage("Transfer already processed with different data")
+                    .hasFieldOrPropertyWithValue("code", FailureCode.REJECTED_BY_ACCOUNT);
+        }
+
+        @Test
+        void shouldUseGenericCodeWhenProblemHasNoCode() {
+            respondWithProblem(422, "Insufficient balance");
+
+            assertThatThrownBy(() -> client.transfer(REQUEST))
+                    .isInstanceOf(AccountTransferRejectedException.class)
+                    .hasMessage("Insufficient balance")
+                    .hasFieldOrPropertyWithValue("code", FailureCode.REJECTED_BY_ACCOUNT);
+        }
+
+        @Test
+        void shouldKeepCodeWhenDetailIsMissing() {
+            respond(422, "application/problem+json", """
+                    {"type": "about:blank", "status": 422, "code": "INSUFFICIENT_BALANCE"}
+                    """);
+
+            assertThatThrownBy(() -> client.transfer(REQUEST))
+                    .isInstanceOf(AccountTransferRejectedException.class)
+                    .hasMessage("Rejected by account service (422)")
+                    .hasFieldOrPropertyWithValue("code", FailureCode.INSUFFICIENT_BALANCE);
+        }
+
+        @Test
+        void shouldUseInvalidRequestCodeWhenAccountSaysRequestIsInvalid() {
+            respondWithProblem(400, "Invalid request");
+
+            assertThatThrownBy(() -> client.transfer(REQUEST))
+                    .isInstanceOf(AccountTransferRejectedException.class)
+                    .hasFieldOrPropertyWithValue("code", FailureCode.INVALID_REQUEST);
+        }
+
+        @Test
+        void shouldUseGenericCodeWhenBodyIsNotJson() {
+            respond(404, "text/html", "<html>Not Found</html>");
+
+            assertThatThrownBy(() -> client.transfer(REQUEST))
+                    .isInstanceOf(AccountTransferRejectedException.class)
+                    .hasFieldOrPropertyWithValue("code", FailureCode.REJECTED_BY_ACCOUNT);
+        }
+
+        @Test
+        void shouldUseGenericCodeWhenJsonIsMalformed() {
+            respond(422, "application/problem+json", "{ not json");
+
+            assertThatThrownBy(() -> client.transfer(REQUEST))
+                    .isInstanceOf(AccountTransferRejectedException.class)
+                    .hasFieldOrPropertyWithValue("code", FailureCode.REJECTED_BY_ACCOUNT);
         }
     }
 

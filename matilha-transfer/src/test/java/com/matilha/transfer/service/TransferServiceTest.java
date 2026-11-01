@@ -33,6 +33,7 @@ import com.matilha.transfer.client.AccountClient;
 import com.matilha.transfer.dto.AccountTransferRequestDto;
 import com.matilha.transfer.dto.CreateTransferRequestDto;
 import com.matilha.transfer.dto.TransferResponseDto;
+import com.matilha.transfer.entity.FailureCode;
 import com.matilha.transfer.entity.Transfer;
 import com.matilha.transfer.entity.TransferStatus;
 import com.matilha.transfer.exception.AccountTransferRejectedException;
@@ -138,7 +139,8 @@ class TransferServiceTest {
         @BeforeEach
         void setUp() {
             saveBehavesLikeDatabase();
-            when(accountClient.transfer(any())).thenThrow(new AccountTransferRejectedException("Insufficient balance"));
+            when(accountClient.transfer(any())).thenThrow(
+                    new AccountTransferRejectedException(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance"));
         }
 
         @Test
@@ -154,6 +156,17 @@ class TransferServiceTest {
             transferService.create(KEY, REQUEST);
 
             assertThat(savedStatuses).containsExactly(TransferStatus.PENDING, TransferStatus.FAILED);
+        }
+
+        @Test
+        void shouldKeepTheCodeGivenByAccount() {
+            Transfer pending = new Transfer(KEY, SOURCE, TARGET, new BigDecimal("250.50"));
+            ReflectionTestUtils.setField(pending, "id", TRANSFER_ID);
+
+            Transfer processed = transferService.process(pending);
+
+            assertThat(processed.getFailureCode()).isEqualTo(FailureCode.INSUFFICIENT_BALANCE);
+            assertThat(processed.getFailureReason()).isEqualTo("Insufficient balance");
         }
     }
 
@@ -207,7 +220,7 @@ class TransferServiceTest {
             if (status == TransferStatus.COMPLETED) {
                 transfer.complete();
             } else if (status == TransferStatus.FAILED) {
-                transfer.fail("Insufficient balance");
+                transfer.fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance");
             }
             return transfer;
         }

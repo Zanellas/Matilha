@@ -70,7 +70,7 @@ O status HTTP do `POST` depende do resultado:
 |---|---|---|
 | `COMPLETED` | `201 Created` | A transferência. O dinheiro foi movido. |
 | `PENDING` | `202 Accepted` | A transferência. Ainda não se sabe se o dinheiro foi movido (o account não respondeu). |
-| `FAILED` | `422 Unprocessable Content` | Um Problem Details com o motivo em `detail` e o id em `transferId` |
+| `FAILED` | `422 Unprocessable Content` | Um Problem Details com o código em `code`, o motivo em `detail` e o id em `transferId` |
 
 Em `201` e `202`, o header `Location` aponta para `/transfers/{id}`. A transferência recusada fica salva e pode ser consultada pelo `transferId`.
 
@@ -83,9 +83,20 @@ Transferência recusada:
   "status": 422,
   "detail": "Insufficient balance",
   "instance": "/transfers",
-  "transferId": "8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d"
+  "transferId": "8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
+  "code": "INSUFFICIENT_BALANCE"
 }
 ```
+
+O `code` é o contrato. O `detail` repete o texto do account e serve só para gente ler.
+
+| `code` | Quando |
+|---|---|
+| `INSUFFICIENT_BALANCE` | A conta de origem não tem saldo |
+| `ACCOUNT_NOT_FOUND` | Uma das contas não existe |
+| `ACCOUNT_INACTIVE` | Uma das contas está bloqueada ou encerrada |
+| `REJECTED_BY_ACCOUNT` | O account recusou por outro motivo, ou mandou um código que o transfer não conhece |
+| `INVALID_REQUEST` | O account disse que o pedido do transfer era inválido. É bug do transfer e fica no log de erro. |
 
 ### Exemplo
 
@@ -112,6 +123,7 @@ Location: /transfers/8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d
   "sourceAccountNumber": "10001",
   "targetAccountNumber": "10002",
   "amount": 250.50,
+  "failureCode": null,
   "failureReason": null,
   "createdAt": "2026-10-26T15:30:00Z"
 }
@@ -145,9 +157,11 @@ O `id` da transferência vai como `transferId` para o account, que também é id
 | Resposta do account | Resultado |
 |---|---|
 | `200` | `COMPLETED` |
-| `404` ou `422` | `FAILED`, com o `detail` do account em `failureReason` |
-| `400` | `FAILED` com log de erro: o transfer mandou um pedido inválido, o que é um bug |
+| `404` ou `422` | `FAILED`. O `code` do account vira o `failureCode` e o `detail` vira o `failureReason`. |
+| `400` | `FAILED` com `INVALID_REQUEST` e log de erro: o transfer mandou um pedido inválido, o que é um bug |
 | `409`, outros `4xx`, `5xx`, timeout, conexão recusada ou resposta ilegível | `PENDING` |
+
+O transfer tem o próprio enum de códigos e converte os do account explicitamente. Um código que ele não conhece vira `REJECTED_BY_ACCOUNT` em vez de quebrar, então o account pode criar códigos novos sem coordenar a mudança com o transfer.
 
 Um timeout fica `PENDING`, e não `FAILED`, porque o account pode ter movido o dinheiro e a resposta ter se perdido no caminho. Os timeouts são de 2 segundos para conectar e 5 segundos para ler.
 
@@ -175,11 +189,11 @@ Uma transferência fica `PENDING` quando o account não respondeu, ou quando ele
 
 **Eventos (em andamento)**
 
-Quando uma transferência termina, o transfer vai publicar `TransferCompleted` ou `TransferFailed` no tópico `matilha.transfer.events` do Kafka. Para não perder evento nem publicar evento de algo que não foi gravado, ele usa o padrão transactional outbox: o evento é gravado na tabela `outbox_events` na mesma transação que muda o status, e um publicador separado envia ao Kafka depois. A tabela e o tópico já existem. A publicação ainda não.
+Quando uma transferência termina, o transfer vai publicar `TransferCompleted` ou `TransferFailed` no tópico `matilha.transfer.events` do Kafka. O evento leva contas, valor e o `failureCode`, mas não o `failureReason`: nenhum consumidor deve depender de um texto. Para não perder evento nem publicar evento de algo que não foi gravado, ele usa o padrão transactional outbox: o evento é gravado na tabela `outbox_events` na mesma transação que muda o status, e um publicador separado envia ao Kafka depois. A tabela e o tópico já existem. A publicação ainda não.
 
 ## Erros
 
-Todas as respostas de erro seguem o formato Problem Details, como no account, inclusive a transferência recusada.
+Todas as respostas de erro seguem o formato Problem Details, como no account, inclusive a transferência recusada. Só a transferência recusada traz `code`.
 
 | Status | Quando |
 |---|---|
@@ -195,10 +209,10 @@ As migrações Flyway ficam em `src/main/resources/db/migration`, e o Hibernate 
 
 | Tabela | Conteúdo |
 |---|---|
-| `transfers` | Contas, valor, status, motivo da falha, `idempotency_key` (única), `claimed_until` (reserva do reconciliador) e `version` (lock otimista) |
+| `transfers` | Contas, valor, status, código e motivo da falha, `idempotency_key` (única), `claimed_until` (reserva do reconciliador) e `version` (lock otimista) |
 | `outbox_events` | Eventos a publicar no Kafka: tipo, chave, payload em JSONB, `published_at` e tentativas. Um evento por tipo para cada transferência. |
 
-O banco também garante as regras com constraints: status válido, valor positivo e contas diferentes. Índices parciais sobre as `PENDING` e sobre os eventos não publicados deixam as buscas rápidas mesmo com as tabelas grandes.
+O banco também garante as regras com constraints: status válido, valor positivo, contas diferentes, código de falha válido e código presente só nas `FAILED`. Índices parciais sobre as `PENDING` e sobre os eventos não publicados deixam as buscas rápidas mesmo com as tabelas grandes.
 
 ## Testes
 
