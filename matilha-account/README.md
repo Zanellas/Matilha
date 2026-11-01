@@ -211,9 +211,19 @@ As respostas de erro seguem o formato [Problem Details (RFC 9457)](https://www.r
   "title": "Unprocessable Content",
   "status": 422,
   "detail": "Insufficient balance",
-  "instance": "/internal/transfers"
+  "instance": "/internal/transfers",
+  "code": "INSUFFICIENT_BALANCE"
 }
 ```
+
+O `detail` é texto para gente ler e pode mudar. Quem chama o account decide pelo `code`, que é o contrato. Ele vem em toda resposta `404` e `422`:
+
+| `code` | Quando |
+|---|---|
+| `ACCOUNT_NOT_FOUND` | A conta não existe (`404`) |
+| `ACCOUNT_INACTIVE` | A conta está bloqueada ou encerrada e não pode enviar nem receber dinheiro |
+| `INSUFFICIENT_BALANCE` | O saldo não cobre o valor |
+| `BUSINESS_RULE_VIOLATION` | Qualquer outra regra de negócio (valor inválido, transição de status inválida, operação repetida com dados diferentes...) |
 
 | Status | Quando |
 |---|---|

@@ -11,8 +11,10 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import com.matilha.transfer.dto.AccountProblemDto;
 import com.matilha.transfer.dto.AccountTransferRequestDto;
 import com.matilha.transfer.dto.AccountTransferResponseDto;
+import com.matilha.transfer.entity.FailureCode;
 import com.matilha.transfer.exception.AccountTransferRejectedException;
 import com.matilha.transfer.exception.AccountUnavailableException;
 
@@ -41,10 +43,11 @@ public class AccountClient {
         } catch (HttpClientErrorException ex) {
             if (ex.getStatusCode() == HttpStatus.BAD_REQUEST) {
                 log.error("Account service reject the request as invalid: {}", ex.getResponseBodyAsString());
-                throw new AccountTransferRejectedException("Invalid request sent to account service");
+                throw new AccountTransferRejectedException(FailureCode.INVALID_REQUEST,
+                        "Invalid request sent to account service");
             }
             if (ex.getStatusCode() == HttpStatus.NOT_FOUND || ex.getStatusCode() == HttpStatus.UNPROCESSABLE_CONTENT) {
-                throw new AccountTransferRejectedException(reasonFrom(ex));
+                throw rejectionFrom(ex);
             }
             throw new AccountUnavailableException("Account service returned " + ex.getStatusCode(), ex);
         } catch (RestClientException ex) {
@@ -52,16 +55,21 @@ public class AccountClient {
         }
     }
 
-    private String reasonFrom(HttpClientErrorException ex) {
+    private AccountTransferRejectedException rejectionFrom(HttpClientErrorException ex) {
         String fallback = "Rejected by account service (" + ex.getStatusCode().value() + ")";
+        AccountProblemDto problem = readProblem(ex);
+        if (problem == null) {
+            return new AccountTransferRejectedException(FailureCode.REJECTED_BY_ACCOUNT, fallback);
+        }
+        String reason = problem.detail() == null || problem.detail().isBlank() ? fallback : problem.detail();
+        return new AccountTransferRejectedException(FailureCode.fromAccountCode(problem.code()), reason);
+    }
+
+    private AccountProblemDto readProblem(HttpClientErrorException ex) {
         try {
-            ProblemDetail problem = ex.getResponseBodyAs(ProblemDetail.class);
-            if (problem == null || problem.getDetail() == null || problem.getDetail().isBlank()) {
-                return fallback;
-            }
-            return problem.getDetail();
+            return ex.getResponseBodyAs(AccountProblemDto.class);
         } catch (RuntimeException parseError) {
-            return fallback;
+            return null;
         }
     }
 }

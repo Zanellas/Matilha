@@ -13,6 +13,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import tools.jackson.databind.json.JsonMapper;
+
+import com.matilha.transfer.entity.FailureCode;
 import com.matilha.transfer.entity.Transfer;
 
 class TransferEventTest {
@@ -48,7 +51,7 @@ class TransferEventTest {
             assertThat(event.sourceAccountNumber()).isEqualTo(SOURCE);
             assertThat(event.targetAccountNumber()).isEqualTo(TARGET);
             assertThat(event.amount()).isEqualTo("250.50");
-            assertThat(event.failureReason()).isNull();
+            assertThat(event.failureCode()).isNull();
         }
 
         @Test
@@ -62,15 +65,38 @@ class TransferEventTest {
     class Failed {
 
         @Test
-        void shouldBuildFailedEventWithReason() {
+        void shouldBuildFailedEventWithCode() {
             Transfer transfer = savedTransfer("250.50");
-            transfer.fail("Insufficient balance");
+            transfer.fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance");
 
             TransferEvent event = TransferEvent.from(transfer);
 
             assertThat(event.eventType()).isEqualTo(TransferEvent.FAILED);
-            assertThat(event.failureReason()).isEqualTo("Insufficient balance");
+            assertThat(event.failureCode()).isEqualTo(FailureCode.INSUFFICIENT_BALANCE);
             assertThat(event.transferId()).isEqualTo(TRANSFER_ID);
+        }
+
+        /**
+         * O evento vai para outros serviços. Ele leva o código, não o texto em inglês do account:
+         * nenhum consumidor pode depender de uma frase.
+         */
+        @Test
+        void shouldNotCarryTheFreeTextReason() {
+            assertThat(TransferEvent.class.getRecordComponents())
+                    .extracting(component -> component.getName())
+                    .doesNotContain("failureReason");
+        }
+
+        @Test
+        void shouldWriteTheCodeAsTextInJson() {
+            Transfer transfer = savedTransfer("250.50");
+            transfer.fail(FailureCode.ACCOUNT_INACTIVE, "Account is not active");
+
+            String json = JsonMapper.builder().build().writeValueAsString(TransferEvent.from(transfer));
+
+            assertThat(json)
+                    .contains("\"failureCode\":\"ACCOUNT_INACTIVE\"")
+                    .doesNotContain("Account is not active");
         }
     }
 

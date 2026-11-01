@@ -74,7 +74,7 @@ public class TransferService {
             accountClient.transfer(accountRequest);
             transfer.complete();
         } catch (AccountTransferRejectedException ex) {
-            transfer.fail(ex.getMessage());
+            transfer.fail(ex.getCode(), ex.getMessage());
         } catch (AccountUnavailableException ex) {
             log.warn("Account service unavailable, transfer {} stays PENDING", transfer.getId(), ex);
         }

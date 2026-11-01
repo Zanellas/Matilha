@@ -75,7 +75,7 @@ Outros modos de rodar, endpoints, regras e testes estão no README de cada servi
 - **Sem transação aberta durante chamada de rede.** O transfer grava `PENDING`, chama o account fora de transação e grava o resultado numa segunda transação.
 - **Concorrência resolvida no banco.** O account trava as contas com `SELECT ... FOR UPDATE`, sempre na mesma ordem, o que evita deadlock. O saldo não negativo é garantido na entidade e numa constraint.
 - **Schema só pelo Flyway.** O Hibernate roda com `ddl-auto: validate`, e os testes sobem um PostgreSQL real com Testcontainers, então testam o mesmo schema de produção.
-- **Erros no formato Problem Details (RFC 9457)**, com o detalhe interno só no log.
+- **Erros no formato Problem Details (RFC 9457), com um `code` como contrato.** O account devolve códigos como `INSUFFICIENT_BALANCE`. O transfer converte esses códigos para um enum próprio, grava na transferência e repassa no evento. Nenhum serviço depende do texto em inglês do `detail`, e o detalhe interno de um erro inesperado fica só no log.
 
 ## Stack
 
