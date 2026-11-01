@@ -9,13 +9,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import com.matilha.transfer.entity.Transfer;
-import com.matilha.transfer.entity.TransferStatus;
 
 public interface TransferRepository extends JpaRepository<Transfer, UUID> {
 
     Optional<Transfer> findByIdempotencyKey(UUID idempotencyKey);
-
-    List<Transfer> findTop50ByStatusAndCreatedAtBeforeOrderByCreatedAtAsc(TransferStatus status, Instant createdBefore);
 
     @Query(value = """
             SELECT * FROM transfers

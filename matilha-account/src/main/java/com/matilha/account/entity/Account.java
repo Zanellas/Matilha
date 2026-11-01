@@ -8,6 +8,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import com.matilha.account.exception.BusinessException;
+import com.matilha.account.exception.ErrorCode;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -94,7 +95,7 @@ public class Account {
         validateAmount(amount);
         requireActive();
         if (balance.compareTo(amount) < 0) {
-            throw new BusinessException("Insufficient balance");
+            throw new BusinessException(ErrorCode.INSUFFICIENT_BALANCE, "Insufficient balance");
         }
         this.balance = this.balance.subtract(amount);
     }
@@ -125,7 +126,7 @@ public class Account {
 
     private void requireActive() {
         if (status != AccountStatus.ACTIVE) {
-            throw new BusinessException("Account is not active");
+            throw new BusinessException(ErrorCode.ACCOUNT_INACTIVE, "Account is not active");
         }
     }
 

@@ -1,545 +1,88 @@
 # Matilha
 
-Sistema bancário em microsserviços construído com Spring Boot. Cada serviço vive na sua própria pasta deste monorepo, com build, testes, Dockerfile e pipeline independentes.
+Sistema bancário em microsserviços com Java 25 e Spring Boot 4.1. Abre contas, faz depósitos e transfere dinheiro entre contas, com foco no que costuma dar errado em sistemas distribuídos: requisições repetidas, timeouts, concorrência e falhas parciais.
 
-## Serviços
+Cada serviço vive na sua própria pasta deste monorepo, com banco, build, testes, Dockerfile e pipeline independentes.
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+    client([Cliente])
+    transfer["matilha-transfer<br/>:8082"]
+    account["matilha-account<br/>:8081"]
+    tdb[("PostgreSQL<br/>transfer")]
+    adb[("PostgreSQL<br/>account")]
+    kafka{{"Kafka"}}
+    notification["matilha-notification<br/>(planejado)"]
+
+    client -->|"POST /transfers"| transfer
+    client -->|"/accounts"| account
+    transfer -->|"POST /internal/transfers<br/>(REST, idempotente)"| account
+    transfer --- tdb
+    account --- adb
+    transfer -.->|"eventos via outbox<br/>(em andamento)"| kafka
+    kafka -.-> notification
+```
 
 | Serviço | Responsabilidade | Status |
 |---|---|---|
-| [matilha-account](matilha-account/) | Contas, saldo e movimentações (depósitos e transferências) | ✅ Pronto |
-| [matilha-transfer](matilha-transfer/) | Orquestração de transferências entre contas | ✅ Pronto (fase síncrona) |
+| [matilha-account](matilha-account/) | Contas, saldo e movimentações. É o único serviço que altera saldos. | ✅ Pronto |
+| [matilha-transfer](matilha-transfer/) | Recebe pedidos de transferência, pede ao account para mover o dinheiro e guarda o resultado | ✅ Fase síncrona pronta, eventos em andamento |
 | matilha-gateway | Porta de entrada da API e roteamento | 🚧 Planejado |
-| matilha-notification | Envio de notificações | 🚧 Planejado |
-| keycloak | Autenticação e autorização | 🚧 Planejado |
-| k8s | Manifests de deploy no Kubernetes | 🚧 Planejado |
+| matilha-notification | Consome os eventos de transferência e notifica o cliente | 🚧 Planejado |
 
-## Stack
+## Como rodar
 
-- Java 25 e Spring Boot 4.1
-- Spring Web MVC, Spring Data JPA e Bean Validation
-- PostgreSQL 17 com migrações Flyway
-- RestClient para a comunicação entre serviços
-- Lombok
-- springdoc-openapi (Swagger UI)
-- Spring Boot Actuator (health checks e probes)
-- JUnit 5, Mockito, MockMvc, Testcontainers e H2 nos testes
-- Docker e Docker Compose
-- GitHub Actions
-
----
-
-## matilha-account
-
-Serviço dono das contas. Guarda os dados do titular, o saldo e o histórico de movimentações, e é o único que altera saldos.
-
-### Como rodar
-
-Pré-requisitos: Docker. Para rodar fora do container, também JDK 25.
-
-**1. Configure as variáveis de ambiente**
+Pré-requisito: Docker.
 
 ```bash
-cd matilha-account
-cp .env.example .env
-```
+cp matilha-account/.env.example matilha-account/.env
+cp matilha-transfer/.env.example matilha-transfer/.env
+# edite os dois .env e defina usuário e senha dos bancos
 
-Edite o `.env` e troque usuário e senha do banco:
-
-```properties
-ACCOUNT_DB_NAME=matilha_account
-ACCOUNT_DB_USERNAME=seu-usuario
-ACCOUNT_DB_PASSWORD=sua-senha
-ACCOUNT_DB_URL=jdbc:postgresql://localhost:5432/matilha_account
-```
-
-O `.env` está no `.gitignore` e nunca deve ser commitado.
-
-**2a. Sistema inteiro, a partir da raiz do repositório**
-
-```bash
 docker compose up --build
 ```
 
-O [docker-compose.yml](docker-compose.yml) da raiz só inclui o `compose.yaml` de cada serviço. Cada serviço continua com o próprio `.env` na sua pasta.
-
-**2b. Só o account (banco e serviço no Docker)**
-
-```bash
-cd matilha-account
-docker compose up --build
-```
-
-**2c. Banco no Docker e serviço na máquina (bom para desenvolver)**
-
-```bash
-cd matilha-account
-docker compose up -d account-db
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
-```
-
-O serviço sobe em `http://localhost:8081`. As duas portas (8081 e 5432) ficam ligadas só a `127.0.0.1`. Use um modo de cada vez, porque os nomes dos containers e as portas são fixos.
-
-### Perfis
-
-| Perfil | O que muda |
+| O quê | Endereço |
 |---|---|
-| padrão | Swagger desligado, SQL não aparece no log, health sem detalhes. Todas as variáveis `ACCOUNT_DB_*` precisam vir do ambiente. |
-| `dev` | Lê o `.env`, liga o Swagger, mostra o SQL formatado, mostra os detalhes do health e carrega as contas de exemplo. |
-
-O tamanho do pool de conexões pode ser ajustado com `ACCOUNT_DB_POOL_SIZE` (padrão `10`).
-
-### Documentação da API
-
-Com o perfil `dev` ativo:
-
-- Swagger UI: http://localhost:8081/swagger-ui.html
-- OpenAPI (JSON): http://localhost:8081/v3/api-docs
-
-Health check: http://localhost:8081/actuator/health (probes em `/actuator/health/liveness` e `/actuator/health/readiness`).
-
-### Endpoints
-
-**Públicos**
-
-| Método | Rota | Descrição | Sucesso |
-|---|---|---|---|
-| `POST` | `/accounts` | Abre uma conta | `201` |
-| `GET` | `/accounts` | Lista contas com paginação | `200` |
-| `GET` | `/accounts/{accountNumber}` | Busca uma conta pelo número | `200` |
-| `PATCH` | `/accounts/{accountNumber}` | Atualiza nome, e-mail ou telefone do titular | `200` |
-| `DELETE` | `/accounts/{accountNumber}` | Encerra a conta | `204` |
-| `POST` | `/accounts/{accountNumber}/block` | Bloqueia a conta | `200` |
-| `POST` | `/accounts/{accountNumber}/unblock` | Desbloqueia a conta | `200` |
-
-**Internos** (para outros serviços, como o matilha-transfer; ficam fora do Swagger e não devem ser expostos pelo gateway)
-
-| Método | Rota | Descrição | Sucesso |
-|---|---|---|---|
-| `POST` | `/internal/deposits` | Credita um valor em uma conta | `200` |
-| `POST` | `/internal/transfers` | Transfere um valor entre duas contas | `200` |
-
-#### Exemplos
-
-Abrir conta:
-
-```bash
-curl -X POST http://localhost:8081/accounts \
-  -H "Content-Type: application/json" \
-  -d '{
-    "holderName": "Ana Silva",
-    "holderDocument": "529.982.247-25",
-    "holderEmail": "Ana.Silva@Example.com",
-    "holderPhone": "(11) 98765-4321"
-  }'
-```
-
-```json
-{
-  "accountNumber": "48213",
-  "holderName": "Ana Silva",
-  "holderPhone": "11987654321",
-  "holderEmail": "ana.silva@example.com",
-  "status": "ACTIVE",
-  "balance": 0.00
-}
-```
-
-Listar contas (padrão: página 0, 20 itens, mais recentes primeiro; no máximo 100 por página):
-
-```bash
-curl "http://localhost:8081/accounts?page=0&size=10&sort=holderName,asc"
-```
-
-Depósito:
-
-```bash
-curl -X POST http://localhost:8081/internal/deposits \
-  -H "Content-Type: application/json" \
-  -d '{
-    "depositId": "3f1c2a9e-7b4d-4c1a-9e2f-5a6b7c8d9e01",
-    "accountNumber": "10003",
-    "amount": 100.00
-  }'
-```
-
-Transferência:
-
-```bash
-curl -X POST http://localhost:8081/internal/transfers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "transferId": "8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
-    "sourceAccountNumber": "10001",
-    "targetAccountNumber": "10002",
-    "amount": 250.50
-  }'
-```
-
-```json
-{
-  "transferId": "8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
-  "sourceAccountNumber": "10001",
-  "sourceBalanceAfter": 1249.50,
-  "targetAccountNumber": "10002",
-  "targetBalanceAfter": 500.50,
-  "amount": 250.50
-}
-```
-
-### Regras de negócio
-
-**Conta**
-
-- O número da conta tem 5 dígitos, é gerado aleatoriamente e é único.
-- Toda conta nasce `ACTIVE` com saldo `0.00`.
-- O CPF precisa ser válido e não pode ser alterado depois.
-- Os dados são normalizados antes de salvar: CPF e telefone ficam só com dígitos e o e-mail fica em minúsculas.
-- O telefone precisa ter 10 ou 11 dígitos (aceita formatos como `(11) 98765-4321`).
-- No `PATCH`, campos omitidos não mudam. Contas encerradas não podem ser alteradas.
-
-**Status**
-
-```
-ACTIVE ──block──▶ BLOCKED
-   ▲                 │
-   └─────unblock─────┘
-
-ACTIVE / BLOCKED ──close (saldo = 0)──▶ CLOSED
-```
-
-- Só contas `ACTIVE` podem ser bloqueadas, e só contas `BLOCKED` podem ser desbloqueadas.
-- Só dá para encerrar uma conta com saldo zero. O encerramento é definitivo.
-- Só contas `ACTIVE` recebem ou enviam dinheiro.
-
-**Valores**
-
-- Os valores precisam ser positivos e ter no máximo 2 casas decimais.
-- O saldo nunca fica negativo (a regra está na entidade e também numa constraint do banco).
-
-**Depósitos e transferências**
-
-- **Idempotência:** cada operação traz o próprio ID (`depositId` ou `transferId`). Repetir uma requisição com o mesmo ID devolve o resultado original e não move dinheiro de novo, então quem chama pode reenviar com segurança depois de um timeout.
-- **Concorrência:** as contas envolvidas são travadas no banco (`SELECT ... FOR UPDATE`) durante a operação. Nas transferências, as duas contas são sempre travadas na mesma ordem (pelo número da conta), o que evita deadlock.
-- A conta de origem e a de destino precisam ser diferentes.
-- Cada operação gera movimentações em `account_movements` (`DEBIT` / `CREDIT`) com o saldo resultante. Assim o extrato sempre bate com o saldo.
-
-### Erros
-
-As respostas de erro seguem o formato [Problem Details (RFC 9457)](https://www.rfc-editor.org/rfc/rfc9457):
-
-```json
-{
-  "type": "about:blank",
-  "title": "Unprocessable Content",
-  "status": 422,
-  "detail": "Insufficient balance",
-  "instance": "/internal/transfers"
-}
-```
-
-| Status | Quando |
-|---|---|
-| `400` | Falha de validação do corpo da requisição. Os campos inválidos vêm em `errors`. |
-| `404` | Conta não encontrada |
-| `409` | Conflito de concorrência ou violação de integridade (por exemplo, dado duplicado) |
-| `422` | Regra de negócio violada (saldo insuficiente, conta inativa, transição de status inválida...) |
-| `500` | Erro inesperado (o detalhe vai só para o log, nunca para a resposta) |
-
-### Banco de dados
-
-As migrações Flyway ficam em `src/main/resources/db/migration`, e o Hibernate roda com `ddl-auto: validate`, então o schema é controlado só pelas migrações.
-
-| Tabela | Conteúdo |
-|---|---|
-| `accounts` | Dados do titular, saldo, status e `version` (lock otimista) |
-| `account_movements` | Débitos e créditos de cada operação (`TRANSFER` ou `DEPOSIT`), únicos por `(operation_id, type)` |
-
-#### Contas de exemplo (perfil `dev`)
-
-O perfil `dev` carrega `db/seed/R__seed_dev_accounts.sql`:
-
-| Conta | Titular | Saldo | Status |
-|---|---|---|---|
-| `10001` | Ana Silva | 1500.00 | ACTIVE |
-| `10002` | Bruno Costa | 250.00 | ACTIVE |
-| `10003` | Carla Souza | 0.00 | ACTIVE |
-| `10004` | Diego Lima | 800.00 | BLOCKED |
-| `10005` | Elisa Rocha | 0.00 | CLOSED |
-
-### Testes
-
-```bash
-cd matilha-account
-./mvnw verify
-```
-
-O Docker precisa estar rodando, porque o teste de concorrência sobe um PostgreSQL com Testcontainers. Os testes cobrem:
-
-- **Entidades**: regras de saldo, status, normalização e validação
-- **Services**: criação de conta, depósito, transferência, idempotência e ordem de lock (com Mockito)
-- **Controllers**: contratos HTTP, validação e respostas de erro (com MockMvc)
-- **Concorrência**: transferências e depósitos simultâneos contra um PostgreSQL real, com Flyway e locks de verdade. O teste confere que o saldo nunca fica negativo, que não há deadlock, que uma operação repetida não move dinheiro duas vezes e que nenhuma atualização se perde.
-
-O teste de contexto (`AccountApplicationTests`) usa o perfil `test` (`src/test/resources/application-test.yml`), com H2 em memória.
-
-### Estrutura
-
-```
-matilha-account/
-├── src/main/java/com/matilha/account/
-│   ├── config/        # OpenAPI e paginação
-│   ├── controller/    # Endpoints públicos e internos
-│   ├── dto/           # Records de request/response
-│   ├── entity/        # Account, AccountMovement e enums
-│   ├── exception/     # Exceções e handler global
-│   ├── repository/    # Repositórios Spring Data
-│   └── service/       # Contas, depósitos e transferências
-├── src/main/resources/
-│   ├── db/migration/  # Migrações versionadas
-│   └── db/seed/       # Dados de exemplo (só no dev)
-├── Dockerfile         # Build multi-stage, roda como usuário não-root
-└── compose.yaml       # PostgreSQL + serviço
-```
-
----
-
-## matilha-transfer
-
-Serviço dono dos pedidos de transferência. Recebe o pedido do cliente, registra, pede para o matilha-account mover o dinheiro e guarda o resultado. Ele nunca altera saldos: quem faz isso é o account.
-
-### Como rodar
-
-Pré-requisitos: os mesmos do account. O account precisa estar rodando para as transferências serem processadas. Sem ele, os pedidos ficam `PENDING`.
-
-**1. Configure as variáveis de ambiente**
-
-```bash
-cd matilha-transfer
-cp .env.example .env
-```
-
-Edite o `.env` e troque usuário e senha do banco:
-
-```properties
-TRANSFER_DB_NAME=matilha_transfer
-TRANSFER_DB_USERNAME=seu-usuario
-TRANSFER_DB_PASSWORD=sua-senha
-TRANSFER_DB_URL=jdbc:postgresql://localhost:5433/matilha_transfer
-```
-
-**2a. Sistema inteiro:** `docker compose up --build` na raiz, como no account.
-
-**2b. Banco no Docker e serviço na máquina (bom para desenvolver)**
-
-```bash
-cd matilha-transfer
-docker compose up -d transfer-db
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
-```
-
-O serviço sobe em `http://localhost:8082`, com o banco na porta `5433` para não conflitar com o do account. As duas portas ficam ligadas só a `127.0.0.1`.
-
-O endereço do account vem de `ACCOUNT_SERVICE_URL` (padrão `http://localhost:8081`). No Docker, o `compose.yaml` aponta para `http://account:8081`.
-
-### Perfis
-
-Iguais aos do account: o padrão exige as variáveis `TRANSFER_DB_*` do ambiente, e o `dev` lê o `.env`, liga o Swagger, mostra o SQL e os detalhes do health. O transfer não tem dados de exemplo. O pool pode ser ajustado com `TRANSFER_DB_POOL_SIZE` (padrão `10`).
-
-### Documentação da API
-
-Com o perfil `dev` ativo:
-
-- Swagger UI: http://localhost:8082/swagger-ui.html
-- OpenAPI (JSON): http://localhost:8082/v3/api-docs
-
-Health check: http://localhost:8082/actuator/health.
-
-### Endpoints
-
-| Método | Rota | Descrição | Sucesso |
-|---|---|---|---|
-| `POST` | `/transfers` | Pede uma transferência (exige o header `Idempotency-Key`) | `201`, `202` ou `422` |
-| `GET` | `/transfers/{id}` | Consulta uma transferência | `200` |
-
-O status HTTP do `POST` depende do resultado:
-
-| Resultado | HTTP | Corpo |
-|---|---|---|
-| `COMPLETED` | `201 Created` | A transferência. O dinheiro foi movido. |
-| `PENDING` | `202 Accepted` | A transferência. Ainda não se sabe se o dinheiro foi movido (o account não respondeu). |
-| `FAILED` | `422 Unprocessable Content` | Um Problem Details com o motivo em `detail` e o id em `transferId` |
-
-Em `201` e `202`, o header `Location` aponta para `/transfers/{id}`. A transferência recusada fica salva e pode ser consultada pelo `transferId`.
-
-Transferência recusada:
-
-```json
-{
-  "type": "about:blank",
-  "title": "Transfer failed",
-  "status": 422,
-  "detail": "Insufficient balance",
-  "instance": "/transfers",
-  "transferId": "8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d"
-}
-```
-
-#### Exemplo
+| matilha-account (Swagger) | http://localhost:8081/swagger-ui.html |
+| matilha-transfer (Swagger) | http://localhost:8082/swagger-ui.html |
+| Kafka UI | http://localhost:8090 |
+
+Os serviços sobem no perfil `dev`, que carrega contas de exemplo (`10001` a `10005`). Para testar uma transferência:
 
 ```bash
 curl -i -X POST http://localhost:8082/transfers \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: 3f1c2a9e-7b4d-4c1a-9e2f-5a6b7c8d9e01" \
-  -d '{
-    "sourceAccountNumber": "10001",
-    "targetAccountNumber": "10002",
-    "amount": 250.50
-  }'
+  -d '{"sourceAccountNumber": "10001", "targetAccountNumber": "10002", "amount": 250.50}'
 ```
 
-```
-HTTP/1.1 201
-Location: /transfers/8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d
-```
+Rode o mesmo comando de novo: a resposta é a mesma e o dinheiro só sai da conta uma vez.
 
-```json
-{
-  "id": "8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
-  "status": "COMPLETED",
-  "sourceAccountNumber": "10001",
-  "targetAccountNumber": "10002",
-  "amount": 250.50,
-  "failureReason": null,
-  "createdAt": "2026-10-26T15:30:00Z"
-}
-```
+Outros modos de rodar, endpoints, regras e testes estão no README de cada serviço. A [collection do Postman](postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro.
 
-### Como funciona
+## Decisões principais
 
-```
-POST /transfers
-  │
-  ├─ Idempotency-Key já existe? ──sim──▶ mesmos dados: devolve a transferência existente
-  │                                      dados diferentes: 422
-  │
-  ├─ grava PENDING                        (transação 1)
-  ├─ chama POST /internal/transfers do account   (fora de transação)
-  └─ grava COMPLETED / FAILED / mantém PENDING   (transação 2)
-```
+- **Um banco por serviço.** O transfer nunca toca no banco do account. Ele pede a operação pela API interna, e o account é o único dono do saldo.
+- **Idempotência ponta a ponta.** O cliente manda um `Idempotency-Key`. O transfer repassa o id da transferência ao account, que também é idempotente. Um reenvio, seja do cliente ou do próprio sistema, nunca move o dinheiro duas vezes.
+- **Timeout não é falha.** Se o account não responde, a transferência fica `PENDING`, não `FAILED`, porque o dinheiro pode ter sido movido e a resposta ter se perdido. Um reconciliador agendado reenvia as pendentes. Ele usa `FOR UPDATE SKIP LOCKED` com uma reserva com prazo, então funciona com várias réplicas.
+- **Sem transação aberta durante chamada de rede.** O transfer grava `PENDING`, chama o account fora de transação e grava o resultado numa segunda transação.
+- **Concorrência resolvida no banco.** O account trava as contas com `SELECT ... FOR UPDATE`, sempre na mesma ordem, o que evita deadlock. O saldo não negativo é garantido na entidade e numa constraint.
+- **Schema só pelo Flyway.** O Hibernate roda com `ddl-auto: validate`, e os testes sobem um PostgreSQL real com Testcontainers, então testam o mesmo schema de produção.
+- **Erros no formato Problem Details (RFC 9457)**, com o detalhe interno só no log.
 
-**Idempotência**
+## Stack
 
-- Cada pedido traz uma chave no header `Idempotency-Key` (um UUID gerado pelo cliente). A chave é única no banco.
-- Reenviar o mesmo pedido com a mesma chave devolve a transferência original, com o mesmo status HTTP, sem chamar o account de novo. Valores como `100.0` e `100.00` contam como o mesmo pedido.
-- Reusar a chave com dados diferentes dá `422`.
-- Se duas requisições com a mesma chave chegarem ao mesmo tempo, a constraint `UNIQUE` do banco deixa só uma criar a transferência. A outra recebe o resultado da vencedora.
-- Para tentar de novo uma transferência `FAILED`, o cliente precisa de uma chave nova.
+Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), PostgreSQL 17, Flyway, Kafka, RestClient, springdoc-openapi, JUnit 5, Mockito, MockMvc, Testcontainers, Docker Compose e GitHub Actions (um workflow por serviço: testes e build da imagem).
 
-**Comunicação com o account**
+## Roadmap
 
-O `id` da transferência vai como `transferId` para o account, que também é idempotente. Por isso um reenvio nunca move o dinheiro duas vezes.
-
-| Resposta do account | Resultado |
-|---|---|
-| `200` | `COMPLETED` |
-| `404` ou `422` | `FAILED`, com o `detail` do account em `failureReason` |
-| `400` | `FAILED` com log de erro: o transfer mandou um pedido inválido, o que é um bug |
-| `409`, outros `4xx`, `5xx`, timeout, conexão recusada ou resposta ilegível | `PENDING` |
-
-Um timeout fica `PENDING`, e não `FAILED`, porque o account pode ter movido o dinheiro e a resposta ter se perdido no caminho. Os timeouts são de 2 segundos para conectar e 5 segundos para ler.
-
-A chamada ao account acontece fora de transação, para não prender uma conexão do banco enquanto espera a rede.
-
-**Regras do pedido**
-
-- As contas têm 5 dígitos e precisam ser diferentes.
-- O valor precisa ser positivo, com no máximo 2 casas decimais.
-
-**Reconciliador de pendentes**
-
-Uma transferência fica `PENDING` quando o account não respondeu, ou quando ele moveu o dinheiro e a gravação do resultado falhou. O `TransferReconciler` resolve os dois casos: a cada minuto, ele pega as `PENDING` com mais de 30 segundos e reenvia ao account com o mesmo `transferId`. Como o account é idempotente, ele responde com o resultado original ou processa agora.
-
-- **Várias réplicas:** a busca usa `SELECT ... FOR UPDATE SKIP LOCKED` numa transação curta, que grava uma reserva em `claimed_until` (5 minutos). Cada pendente é pega por uma réplica só. Se a réplica cair no meio, a reserva expira e outra assume.
-- **Lotes de 20:** uma transferência com problema é registrada no log e não impede as outras do lote.
-- **`@Version`:** se o reconciliador e uma requisição terminarem a mesma transferência, só um grava o resultado.
-
-| Propriedade | Padrão | Significado |
-|---|---|---|
-| `matilha.reconciler.interval` | `PT60S` | Intervalo entre as rodadas |
-| `matilha.reconciler.min-age` | `PT30S` | Idade mínima de uma `PENDING` para ser reenviada. Precisa ser maior que os timeouts do account somados. |
-| `matilha.reconciler.lease` | `PT5M` | Duração da reserva. Precisa cobrir um lote inteiro (20 × 7s no pior caso). |
-| `matilha.reconciler.enabled` | `true` | Liga ou desliga o agendamento |
-
-### Erros
-
-Todas as respostas de erro seguem o formato Problem Details, como no account, inclusive a transferência recusada.
-
-| Status | Quando |
-|---|---|
-| `400` | Corpo inválido (campos em `errors`), header `Idempotency-Key` ausente ou que não é UUID, id que não é UUID |
-| `404` | Transferência não encontrada |
-| `409` | Violação de integridade inesperada |
-| `422` | Transferência recusada pelo account, contas iguais ou chave reusada com dados diferentes |
-| `500` | Erro inesperado (o detalhe vai só para o log) |
-
-### Banco de dados
-
-| Tabela | Conteúdo |
-|---|---|
-| `transfers` | Contas, valor, status, motivo da falha, `idempotency_key` (única), `claimed_until` (reserva do reconciliador) e `version` (lock otimista) |
-
-O banco também garante as regras com constraints: status válido, valor positivo e contas diferentes. Um índice parcial sobre as `PENDING` deixa a busca do reconciliador rápida mesmo com a tabela grande.
-
-### Testes
-
-```bash
-cd matilha-transfer
-./mvnw verify
-```
-
-O Docker precisa estar rodando, porque os testes de persistência sobem um PostgreSQL com Testcontainers. Os testes cobrem:
-
-- **Entidade**: validações, transições de status e comparação de pedidos
-- **Persistência**: as migrações contra um PostgreSQL real, as constraints, a chave de idempotência única e a busca do reconciliador. Um teste abre duas transações ao mesmo tempo e confere que o `SKIP LOCKED` dá lotes diferentes para cada uma, sem esperar.
-- **Reconciliador**: o corte por idade, o lote, a reserva e a continuidade quando uma transferência falha (com Mockito)
-- **AccountClient**: as respostas do account contra um servidor HTTP de verdade, incluindo conexão recusada e timeout. O teste de timeout leva uns 5 segundos.
-- **Service**: sucesso, recusa, indisponibilidade, reenvio e corrida pela mesma chave (com Mockito)
-- **Controller**: status HTTP de cada resultado, header de idempotência, validação e erros (com MockMvc)
-
-#### Postman
-
-A collection [postman/matilha-transfer.postman_collection.json](postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro com os dois serviços rodando no perfil `dev`. Ela inclui sucesso, idempotência (conferindo que o saldo muda uma vez só), recusas, consulta e validação. Rode pelo Collection Runner, sem a pasta 6. Ela é manual: você para o account, cria uma transferência (`202 PENDING`), sobe o account de novo e confere que o reconciliador a marcou `COMPLETED`.
-
-### Estrutura
-
-```
-matilha-transfer/
-├── src/main/java/com/matilha/transfer/
-│   ├── client/        # AccountClient (chamadas ao matilha-account)
-│   ├── component/     # TransferReconciler (reenvio agendado das pendentes)
-│   ├── config/        # OpenAPI e agendamento
-│   ├── controller/    # Endpoints de transferência
-│   ├── dto/           # Records de request/response (próprios e do account)
-│   ├── entity/        # Transfer e TransferStatus
-│   ├── exception/     # Exceções e handler global
-│   ├── repository/    # Repositório Spring Data
-│   └── service/       # Orquestração da transferência
-├── src/main/resources/
-│   └── db/migration/  # Migrações versionadas
-├── Dockerfile
-└── compose.yaml       # PostgreSQL + serviço
-```
-
----
-
-## CI
-
-Cada serviço tem o próprio workflow, que roda em push para `main` e em pull requests que mexem na pasta dele:
-
-- [account-ci.yml](.github/workflows/account-ci.yml) para `matilha-account/`
-- [transfer-ci.yml](.github/workflows/transfer-ci.yml) para `matilha-transfer/`
-
-Os dois têm os mesmos passos:
-
-1. **test**: `./mvnw -B verify` com Java 25
-2. **docker**: build da imagem, só se os testes passarem
+- [x] matilha-account: contas, depósitos e transferências com lock e idempotência
+- [x] matilha-transfer: orquestração síncrona com idempotência e reconciliador de pendentes
+- [ ] Eventos de transferência no Kafka com transactional outbox (tabela criada, publicação em andamento)
+- [ ] matilha-notification consumindo os eventos
+- [ ] matilha-gateway como porta de entrada
+- [ ] Autenticação com Keycloak
+- [ ] Deploy no Kubernetes

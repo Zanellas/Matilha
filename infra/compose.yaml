@@ -1,9 +1,5 @@
 name: matilha
 
-include:
-  - matilha-account/compose.yaml
-  - matilha-transfer/compose.yaml
-
 services:
   kafka:
     image: apache/kafka:4.3.1

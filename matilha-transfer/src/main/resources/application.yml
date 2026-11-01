@@ -36,6 +36,9 @@ spring:
       include-stacktrace: never
       include-exception: false
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
 server:
   port: 8082
   shutdown: graceful
