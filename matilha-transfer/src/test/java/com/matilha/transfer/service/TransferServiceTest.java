@@ -3,6 +3,7 @@ package com.matilha.transfer.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -27,6 +28,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.matilha.transfer.client.AccountClient;
@@ -58,11 +60,32 @@ class TransferServiceTest {
     @Mock
     private AccountClient accountClient;
 
+    @Mock
+    private TransferFinisher transferFinisher;
+
     @InjectMocks
     private TransferService transferService;
 
-    /** Status da transferência no momento de cada save, na ordem em que aconteceram. */
+    /** Status da transferência em cada save do repositório. Só a PENDING passa por ele; o resultado vai pelo finisher. */
     private final List<TransferStatus> savedStatuses = new ArrayList<>();
+
+    /** O finisher de verdade (testado no TransferFinisherTest) aplica o resultado e grava. Aqui só aplica. */
+    private void finisherCompletes() {
+        when(transferFinisher.complete(any(Transfer.class))).thenAnswer(invocation -> {
+            Transfer transfer = invocation.getArgument(0);
+            transfer.complete();
+            return transfer;
+        });
+    }
+
+    private void finisherFails() {
+        when(transferFinisher.fail(any(Transfer.class), any(FailureCode.class), any(String.class)))
+                .thenAnswer(invocation -> {
+                    Transfer transfer = invocation.getArgument(0);
+                    transfer.fail(invocation.getArgument(1), invocation.getArgument(2));
+                    return transfer;
+                });
+    }
 
     /**
      * Faz o mock do save se comportar como o Hibernate: preenche o id (que é @GeneratedValue)
@@ -85,6 +108,7 @@ class TransferServiceTest {
         @BeforeEach
         void setUp() {
             saveBehavesLikeDatabase();
+            finisherCompletes();
         }
 
         @Test
@@ -100,14 +124,15 @@ class TransferServiceTest {
         }
 
         @Test
-        void shouldSavePendingBeforeCallingAccountAndCompletedAfter() {
+        void shouldSavePendingBeforeCallingAccountAndCompleteAfter() {
             transferService.create(KEY, REQUEST);
 
-            InOrder order = inOrder(transferRepository, accountClient);
+            InOrder order = inOrder(transferRepository, accountClient, transferFinisher);
             order.verify(transferRepository).save(any(Transfer.class));
             order.verify(accountClient).transfer(any(AccountTransferRequestDto.class));
-            order.verify(transferRepository).save(any(Transfer.class));
-            assertThat(savedStatuses).containsExactly(TransferStatus.PENDING, TransferStatus.COMPLETED);
+            order.verify(transferFinisher).complete(any(Transfer.class));
+            assertThat(savedStatuses).containsExactly(TransferStatus.PENDING);
+            verify(transferFinisher, never()).fail(any(), any(), any());
         }
 
         @Test
@@ -139,34 +164,28 @@ class TransferServiceTest {
         @BeforeEach
         void setUp() {
             saveBehavesLikeDatabase();
+            finisherFails();
             when(accountClient.transfer(any())).thenThrow(
                     new AccountTransferRejectedException(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance"));
         }
 
         @Test
-        void shouldFailTransferWithReason() {
+        void shouldFailTransferWithCodeAndReason() {
             TransferResponseDto response = transferService.create(KEY, REQUEST);
 
             assertThat(response.status()).isEqualTo(TransferStatus.FAILED);
+            assertThat(response.failureCode()).isEqualTo(FailureCode.INSUFFICIENT_BALANCE);
             assertThat(response.failureReason()).isEqualTo("Insufficient balance");
         }
 
         @Test
-        void shouldSaveFailedStatus() {
+        void shouldPassTheCodeAndReasonGivenByAccountToTheFinisher() {
             transferService.create(KEY, REQUEST);
 
-            assertThat(savedStatuses).containsExactly(TransferStatus.PENDING, TransferStatus.FAILED);
-        }
-
-        @Test
-        void shouldKeepTheCodeGivenByAccount() {
-            Transfer pending = new Transfer(KEY, SOURCE, TARGET, new BigDecimal("250.50"));
-            ReflectionTestUtils.setField(pending, "id", TRANSFER_ID);
-
-            Transfer processed = transferService.process(pending);
-
-            assertThat(processed.getFailureCode()).isEqualTo(FailureCode.INSUFFICIENT_BALANCE);
-            assertThat(processed.getFailureReason()).isEqualTo("Insufficient balance");
+            verify(transferFinisher).fail(any(Transfer.class), eq(FailureCode.INSUFFICIENT_BALANCE),
+                    eq("Insufficient balance"));
+            verify(transferFinisher, never()).complete(any());
+            assertThat(savedStatuses).containsExactly(TransferStatus.PENDING);
         }
     }
 
@@ -190,10 +209,12 @@ class TransferServiceTest {
         }
 
         @Test
-        void shouldNeverMarkAsFailed() {
+        void shouldNeitherFinishNorSaveAgain() {
             transferService.create(KEY, REQUEST);
 
-            assertThat(savedStatuses).containsOnly(TransferStatus.PENDING);
+            verify(transferFinisher, never()).complete(any());
+            verify(transferFinisher, never()).fail(any(), any(), any());
+            assertThat(savedStatuses).containsExactly(TransferStatus.PENDING);
         }
     }
 
@@ -208,6 +229,23 @@ class TransferServiceTest {
             assertThatThrownBy(() -> transferService.create(KEY, REQUEST))
                     .isInstanceOf(IllegalStateException.class);
             assertThat(savedStatuses).containsExactly(TransferStatus.PENDING);
+            verify(transferFinisher, never()).complete(any());
+            verify(transferFinisher, never()).fail(any(), any(), any());
+        }
+
+        /**
+         * O complete fica fora do try do account. Um erro ao gravar (aqui, o @Version) não pode ser confundido
+         * com uma recusa do account e virar FAILED: ele sobe, e o reconciliador trata.
+         */
+        @Test
+        void shouldNotTreatAnErrorWhileFinishingAsAnAccountRejection() {
+            saveBehavesLikeDatabase();
+            ObjectOptimisticLockingFailureException conflict =
+                    new ObjectOptimisticLockingFailureException(Transfer.class, TRANSFER_ID);
+            when(transferFinisher.complete(any(Transfer.class))).thenThrow(conflict);
+
+            assertThatThrownBy(() -> transferService.create(KEY, REQUEST)).isSameAs(conflict);
+            verify(transferFinisher, never()).fail(any(), any(), any());
         }
     }
 
