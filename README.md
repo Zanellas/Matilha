@@ -9,6 +9,7 @@ Cada serviço vive na sua própria pasta deste monorepo, com banco, build, teste
 ```mermaid
 flowchart LR
     client([Cliente])
+    payments([Sistema de pagamentos<br/>ex.: PIX recebido])
     transfer["matilha-transfer<br/>:8082"]
     account["matilha-account<br/>:8081"]
     tdb[("PostgreSQL<br/>transfer")]
@@ -18,6 +19,7 @@ flowchart LR
 
     client -->|"POST /transfers"| transfer
     client -->|"/accounts"| account
+    payments -.->|"POST /internal/deposits<br/>(simulado)"| account
     transfer -->|"POST /internal/transfers<br/>(REST, idempotente)"| account
     transfer --- tdb
     account --- adb
@@ -30,7 +32,7 @@ flowchart LR
 | [matilha-account](matilha-account/) | Contas, saldo e movimentações. É o único serviço que altera saldos. | ✅ Pronto |
 | [matilha-transfer](matilha-transfer/) | Recebe pedidos de transferência, pede ao account para mover o dinheiro e guarda o resultado | ✅ Fase síncrona pronta, eventos em andamento |
 | matilha-gateway | Porta de entrada da API e roteamento | 🚧 Planejado |
-| matilha-notification | Consome os eventos de transferência e notifica o cliente | 🚧 Planejado |
+| matilha-notification | Consome os eventos de transferência e registra a notificação de cada conta envolvida | 🚧 Planejado |
 
 ## Como rodar
 
@@ -67,6 +69,8 @@ Outros modos de rodar, endpoints, regras e testes estão no README de cada servi
 
 - **Um banco por serviço.** O transfer nunca toca no banco do account. Ele pede a operação pela API interna, e o account é o único dono do saldo.
 - **Idempotência ponta a ponta.** O cliente manda um `Idempotency-Key`. O transfer repassa o id da transferência ao account, que também é idempotente. Um reenvio, seja do cliente ou do próprio sistema, nunca move o dinheiro duas vezes.
+- **Depósito é entrada externa.** O `/internal/deposits` representa dinheiro vindo de fora, como um PIX recebido, e é chamado pelo sistema de pagamentos com o ID da operação dele. Como o Matilha não tem esse sistema, ele é simulado por chamada direta. Não é uma operação administrativa e não passa pelo gateway.
+- **Dados pessoais ficam no account.** Os eventos de transferência levam só números de conta, valor e código do resultado, nunca nome, e-mail ou telefone. Por isso o matilha-notification não manda e-mail: ele registra no banco e no log que a notificação foi gerada para a conta. Enviar e-mail de verdade exigiria que ele consultasse o account de forma síncrona ou que o evento carregasse dados pessoais, e os dois anulam o motivo de usar eventos. O que ele demonstra é o consumo idempotente: uma mensagem repetida não gera uma segunda notificação.
 - **Timeout não é falha.** Se o account não responde, a transferência fica `PENDING`, não `FAILED`, porque o dinheiro pode ter sido movido e a resposta ter se perdido. Um reconciliador agendado reenvia as pendentes. Ele usa `FOR UPDATE SKIP LOCKED` com uma reserva com prazo, então funciona com várias réplicas.
 - **Sem transação aberta durante chamada de rede.** O transfer grava `PENDING`, chama o account fora de transação e grava o resultado numa segunda transação.
 - **Concorrência resolvida no banco.** O account trava as contas com `SELECT ... FOR UPDATE`, sempre na mesma ordem, o que evita deadlock. O saldo não negativo é garantido na entidade e numa constraint.
@@ -82,7 +86,7 @@ Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), PostgreSQL 1
 - [x] matilha-account: contas, depósitos e transferências com lock e idempotência
 - [x] matilha-transfer: orquestração síncrona com idempotência e reconciliador de pendentes
 - [ ] Eventos de transferência no Kafka com transactional outbox (tabela criada, publicação em andamento)
-- [ ] matilha-notification consumindo os eventos
+- [ ] matilha-notification consumindo os eventos (registro idempotente, sem envio real)
 - [ ] matilha-gateway como porta de entrada
 - [ ] Autenticação com Keycloak
 - [ ] Deploy no Kubernetes

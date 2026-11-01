@@ -6,8 +6,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.matilha.account.dto.TransferRequestDto;
-import com.matilha.account.dto.TransferResponseDto;
+import com.matilha.account.dto.InternalTransferRequestDto;
+import com.matilha.account.dto.InternalTransferResponseDto;
 import com.matilha.account.entity.Account;
 import com.matilha.account.entity.AccountMovement;
 import com.matilha.account.entity.MovementOperation;
@@ -21,16 +21,16 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-public class TransferService {
+public class InternalTransferService {
 
     private final AccountRepository accountRepository;
     private final AccountMovementRepository accountMovementRepository;
 
     @Transactional
-    public TransferResponseDto transfer(TransferRequestDto request) {
+    public InternalTransferResponseDto transfer(InternalTransferRequestDto request) {
         List<AccountMovement> existing = accountMovementRepository.findByOperationIdAndOperation(request.transferId(), MovementOperation.TRANSFER);
         if (!existing.isEmpty()) {
-            TransferResponseDto previous = toResponse(request.transferId(), existing);
+            InternalTransferResponseDto previous = toResponse(request.transferId(), existing);
             if (!isSameTransfer(previous, request)) {
                 throw new BusinessException("Transfer already processed with different data");
             }
@@ -63,7 +63,7 @@ public class TransferService {
         return toResponse(request.transferId(), List.of(debit, credit));
     }
 
-    private boolean isSameTransfer(TransferResponseDto previous, TransferRequestDto request) {
+    private boolean isSameTransfer(InternalTransferResponseDto previous, InternalTransferRequestDto request) {
         return previous.sourceAccountNumber().equals(request.sourceAccountNumber())
                 && previous.targetAccountNumber().equals(request.targetAccountNumber())
                 && previous.amount().compareTo(request.amount()) == 0;
@@ -74,10 +74,10 @@ public class TransferService {
                 .orElseThrow(() -> new AccountNotFoundException(accountNumber));
     }
 
-    private TransferResponseDto toResponse(UUID transferId, List<AccountMovement> movements) {
+    private InternalTransferResponseDto toResponse(UUID transferId, List<AccountMovement> movements) {
         AccountMovement debit = findByType(movements, MovementType.DEBIT);
         AccountMovement credit = findByType(movements, MovementType.CREDIT);
-        return new TransferResponseDto(
+        return new InternalTransferResponseDto(
                 transferId,
                 debit.getAccount().getAccountNumber(), debit.getBalanceAfter(),
                 credit.getAccount().getAccountNumber(), credit.getBalanceAfter(),

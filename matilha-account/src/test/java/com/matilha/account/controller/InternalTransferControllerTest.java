@@ -22,11 +22,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.matilha.account.dto.TransferRequestDto;
-import com.matilha.account.dto.TransferResponseDto;
+import com.matilha.account.dto.InternalTransferRequestDto;
+import com.matilha.account.dto.InternalTransferResponseDto;
 import com.matilha.account.exception.AccountNotFoundException;
 import com.matilha.account.exception.BusinessException;
-import com.matilha.account.service.TransferService;
+import com.matilha.account.exception.ErrorCode;
+import com.matilha.account.service.InternalTransferService;
 
 @WebMvcTest(InternalTransferController.class)
 class InternalTransferControllerTest {
@@ -46,7 +47,7 @@ class InternalTransferControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private TransferService transferService;
+    private InternalTransferService transferService;
 
     private static String requestWith(String field, String jsonValue) {
         return VALID_REQUEST.replaceFirst("\"" + field + "\": [^,\\n]*", "\"" + field + "\": " + jsonValue);
@@ -57,7 +58,7 @@ class InternalTransferControllerTest {
 
         @Test
         void shouldReturnOkWithResultingBalances() throws Exception {
-            when(transferService.transfer(any())).thenReturn(new TransferResponseDto(TRANSFER_ID,
+            when(transferService.transfer(any())).thenReturn(new InternalTransferResponseDto(TRANSFER_ID,
                     "12345", new BigDecimal("350.00"), "67890", new BigDecimal("250.00"), new BigDecimal("150.00")));
 
             mockMvc.perform(post("/internal/transfers")
@@ -74,7 +75,7 @@ class InternalTransferControllerTest {
 
         @Test
         void shouldPassRequestBodyToService() throws Exception {
-            when(transferService.transfer(any())).thenReturn(new TransferResponseDto(TRANSFER_ID,
+            when(transferService.transfer(any())).thenReturn(new InternalTransferResponseDto(TRANSFER_ID,
                     "12345", BigDecimal.ZERO, "67890", BigDecimal.ZERO, new BigDecimal("150.00")));
 
             mockMvc.perform(post("/internal/transfers")
@@ -83,7 +84,7 @@ class InternalTransferControllerTest {
                     .andExpect(status().isOk());
 
             verify(transferService).transfer(
-                    new TransferRequestDto(TRANSFER_ID, "12345", "67890", new BigDecimal("150.00")));
+                    new InternalTransferRequestDto(TRANSFER_ID, "12345", "67890", new BigDecimal("150.00")));
         }
     }
 
@@ -155,14 +156,40 @@ class InternalTransferControllerTest {
     class ErrorHandling {
 
         @Test
-        void shouldReturnUnprocessableContentForBusinessRuleViolation() throws Exception {
-            when(transferService.transfer(any())).thenThrow(new BusinessException("Insufficient balance"));
+        void shouldReturnUnprocessableContentWithCodeWhenBalanceIsInsufficient() throws Exception {
+            when(transferService.transfer(any()))
+                    .thenThrow(new BusinessException(ErrorCode.INSUFFICIENT_BALANCE, "Insufficient balance"));
 
             mockMvc.perform(post("/internal/transfers")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(VALID_REQUEST))
                     .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.detail").value("Insufficient balance"));
+                    .andExpect(jsonPath("$.detail").value("Insufficient balance"))
+                    .andExpect(jsonPath("$.code").value("INSUFFICIENT_BALANCE"));
+        }
+
+        @Test
+        void shouldReturnUnprocessableContentWithCodeWhenAccountIsNotActive() throws Exception {
+            when(transferService.transfer(any()))
+                    .thenThrow(new BusinessException(ErrorCode.ACCOUNT_INACTIVE, "Account is not active"));
+
+            mockMvc.perform(post("/internal/transfers")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(VALID_REQUEST))
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.code").value("ACCOUNT_INACTIVE"));
+        }
+
+        @Test
+        void shouldReturnGenericCodeForOtherBusinessRuleViolations() throws Exception {
+            when(transferService.transfer(any()))
+                    .thenThrow(new BusinessException("Transfer already processed with different data"));
+
+            mockMvc.perform(post("/internal/transfers")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(VALID_REQUEST))
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATION"));
         }
 
         @Test
@@ -173,7 +200,8 @@ class InternalTransferControllerTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(VALID_REQUEST))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.detail").value("Account 67890 not found"));
+                    .andExpect(jsonPath("$.detail").value("Account 67890 not found"))
+                    .andExpect(jsonPath("$.code").value("ACCOUNT_NOT_FOUND"));
         }
 
         @Test

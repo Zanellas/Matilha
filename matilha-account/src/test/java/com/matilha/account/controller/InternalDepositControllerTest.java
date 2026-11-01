@@ -26,6 +26,7 @@ import com.matilha.account.dto.DepositRequestDto;
 import com.matilha.account.dto.DepositResponseDto;
 import com.matilha.account.exception.AccountNotFoundException;
 import com.matilha.account.exception.BusinessException;
+import com.matilha.account.exception.ErrorCode;
 import com.matilha.account.service.DepositService;
 
 @WebMvcTest(InternalDepositController.class)
@@ -139,13 +140,15 @@ class InternalDepositControllerTest {
 
         @Test
         void shouldReturnUnprocessableContentWhenAccountIsNotActive() throws Exception {
-            when(depositService.deposit(any())).thenThrow(new BusinessException("Account is not active"));
+            when(depositService.deposit(any()))
+                    .thenThrow(new BusinessException(ErrorCode.ACCOUNT_INACTIVE, "Account is not active"));
 
             mockMvc.perform(post("/internal/deposits")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(VALID_REQUEST))
                     .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.detail").value("Account is not active"));
+                    .andExpect(jsonPath("$.detail").value("Account is not active"))
+                    .andExpect(jsonPath("$.code").value("ACCOUNT_INACTIVE"));
         }
 
         @Test
@@ -156,7 +159,8 @@ class InternalDepositControllerTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(VALID_REQUEST))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.detail").value("Account 12345 not found"));
+                    .andExpect(jsonPath("$.detail").value("Account 12345 not found"))
+                    .andExpect(jsonPath("$.code").value("ACCOUNT_NOT_FOUND"));
         }
 
         @Test

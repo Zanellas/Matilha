@@ -32,7 +32,7 @@ O `.env` está no `.gitignore` e nunca deve ser commitado.
 docker compose up --build
 ```
 
-O [docker-compose.yml](../docker-compose.yml) da raiz inclui o `compose.yaml` de cada serviço e o Kafka. Cada serviço continua com o próprio `.env` na sua pasta.
+O compose da raiz inclui o `compose.yaml` de cada serviço, e o Kafka vem de `infra/compose.yaml`, incluído pelo transfer. Cada serviço continua com o próprio `.env` na sua pasta.
 
 **2b. Só o account (banco e serviço no Docker)**
 
@@ -83,12 +83,18 @@ Health check: http://localhost:8081/actuator/health (probes em `/actuator/health
 | `POST` | `/accounts/{accountNumber}/block` | Bloqueia a conta | `200` |
 | `POST` | `/accounts/{accountNumber}/unblock` | Desbloqueia a conta | `200` |
 
-**Internos** (para outros serviços, como o matilha-transfer; ficam fora do Swagger e não devem ser expostos pelo gateway)
+**Internos** (para outros sistemas; ficam fora do Swagger e não devem ser expostos pelo gateway)
 
-| Método | Rota | Descrição | Sucesso |
-|---|---|---|---|
-| `POST` | `/internal/deposits` | Credita um valor em uma conta | `200` |
-| `POST` | `/internal/transfers` | Transfere um valor entre duas contas | `200` |
+| Método | Rota | Quem chama | Descrição | Sucesso |
+|---|---|---|---|---|
+| `POST` | `/internal/deposits` | Sistema de pagamentos (externo) | Credita um valor em uma conta | `200` |
+| `POST` | `/internal/transfers` | matilha-transfer | Transfere um valor entre duas contas | `200` |
+
+**De onde vem o depósito**
+
+O `/internal/deposits` representa uma entrada externa de dinheiro, como um PIX recebido. Quem chama é o sistema de pagamentos, que manda o próprio identificador da operação em `depositId`. Se ele reenviar o mesmo aviso, o depósito não é aplicado duas vezes.
+
+O Matilha não tem esse sistema de pagamentos. No perfil `dev`, o dinheiro entra pelas contas de exemplo ou por uma chamada direta ao endpoint, que faz o papel do sistema externo. Não é uma operação administrativa: o pedido não diz quem fez a operação, e o endpoint não é exposto pelo gateway.
 
 ### Exemplos
 
