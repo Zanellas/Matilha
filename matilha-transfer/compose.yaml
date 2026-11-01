@@ -1,5 +1,8 @@
 name: matilha
 
+include:
+  - ../infra/compose.yaml
+
 services:
   transfer-db:
     image: postgres:17
@@ -29,9 +32,13 @@ services:
       TRANSFER_DB_USERNAME: ${TRANSFER_DB_USERNAME:?defina TRANSFER_DB_USERNAME no .env}
       TRANSFER_DB_PASSWORD: ${TRANSFER_DB_PASSWORD:?defina TRANSFER_DB_PASSWORD no .env}
       ACCOUNT_SERVICE_URL: http://account:8081
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     depends_on:
       transfer-db:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
+
 
 volumes:
   transfer-db-data:

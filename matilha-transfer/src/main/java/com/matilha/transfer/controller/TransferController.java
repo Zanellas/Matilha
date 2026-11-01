@@ -48,10 +48,7 @@ public class TransferController {
     }
 
     private static HttpStatus statusFor(TransferStatus status) {
-        return switch (status) {
-            case COMPLETED -> HttpStatus.CREATED;
-            case PENDING -> HttpStatus.ACCEPTED;
-            case FAILED -> HttpStatus.UNPROCESSABLE_CONTENT;
-        };
+        return status == TransferStatus.COMPLETED ? HttpStatus.CREATED : HttpStatus.ACCEPTED;
     }
+
 }
