@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Matilha - Transfer",
-    "description": "Roteiro de testes do matilha-transfer contra o matilha-account, os dois rodando localmente com o perfil dev.\n\nRode as pastas 1 a 5 em ordem com o Collection Runner. A pasta 6 é manual: pare o account antes de rodar.\n\nAs requisições usam as contas de exemplo do perfil dev (10001 a 10005).",
+    "description": "Roteiro de testes do matilha-transfer contra o matilha-account, os dois rodando localmente com o perfil dev.\n\nRode as pastas 1 a 5 em ordem com o Collection Runner. A pasta 6 é manual: pare o account antes de rodar.\n\nAs requisições usam as contas de exemplo do perfil dev (10001 a 10005).\n\nAs recusas são conferidas pelo code do Problem Details (INSUFFICIENT_BALANCE, ACCOUNT_NOT_FOUND, ACCOUNT_INACTIVE), que é o contrato. O detail é texto e pode mudar.\n\nCada transferência COMPLETED ou FAILED gera um evento no tópico matilha.transfer.events. Para ver, abra a Kafka UI (http://localhost:8090) depois de rodar o Runner.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -12,7 +12,8 @@
     { "key": "transferId", "value": "" },
     { "key": "sourceBalanceBefore", "value": "" },
     { "key": "targetBalanceBefore", "value": "" },
-    { "key": "pendingTransferId", "value": "" }
+    { "key": "pendingTransferId", "value": "" },
+    { "key": "failedTransferId", "value": "" }
   ],
   "item": [
     {
@@ -115,6 +116,10 @@
                   "const body = pm.response.json();",
                   "pm.test('status 201 Created', () => pm.response.to.have.status(201));",
                   "pm.test('transferência COMPLETED', () => pm.expect(body.status).to.eql('COMPLETED'));",
+                  "pm.test('sem código nem motivo de falha', () => {",
+                  "    pm.expect(body.failureCode).to.be.null;",
+                  "    pm.expect(body.failureReason).to.be.null;",
+                  "});",
                   "pm.test('Location aponta para a transferência', () => {",
                   "    pm.expect(pm.response.headers.get('Location')).to.eql('/transfers/' + body.id);",
                   "});",
@@ -304,6 +309,64 @@
       "name": "3. Recusadas pelo account (422 ProblemDetail)",
       "item": [
         {
+          "name": "Account direto: saldo insuficiente traz o code",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Chama o account sem passar pelo transfer, para ver o code na origem.",
+                  "// O transferId é novo a cada execução e a transferência é recusada, então nenhum saldo muda.",
+                  "const body = pm.response.json();",
+                  "pm.test('status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('code INSUFFICIENT_BALANCE', () => pm.expect(body.code).to.eql('INSUFFICIENT_BALANCE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{$guid}}\",\n  \"sourceAccountNumber\": \"10003\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 50.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{accountUrl}}/internal/transfers",
+              "host": ["{{accountUrl}}"],
+              "path": ["internal", "transfers"]
+            }
+          }
+        },
+        {
+          "name": "Account direto: conta inexistente traz o code (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('code ACCOUNT_NOT_FOUND', () => pm.expect(body.code).to.eql('ACCOUNT_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{accountUrl}}/accounts/10009",
+              "host": ["{{accountUrl}}"],
+              "path": ["accounts", "10009"]
+            }
+          }
+        },
+        {
           "name": "Saldo insuficiente (10003 tem saldo 0)",
           "event": [
             {
@@ -318,7 +381,9 @@
                   "    pm.expect(body.status).to.eql(422);",
                   "    pm.expect(body.transferId).to.be.a('string');",
                   "    pm.expect(body.detail).to.eql('Insufficient balance');",
-                  "});"
+                  "});",
+                  "pm.test('code INSUFFICIENT_BALANCE', () => pm.expect(body.code).to.eql('INSUFFICIENT_BALANCE'));",
+                  "pm.collectionVariables.set('failedTransferId', body.transferId);"
                 ]
               }
             }
@@ -356,6 +421,9 @@
                   "    pm.expect(body.status).to.eql(422);",
                   "    pm.expect(body.transferId).to.be.a('string');",
                   "    pm.expect(body.detail).to.include('10009');",
+                  "});",
+                  "pm.test('code ACCOUNT_NOT_FOUND (o account deu 404, o transfer responde 422)', () => {",
+                  "    pm.expect(body.code).to.eql('ACCOUNT_NOT_FOUND');",
                   "});"
                 ]
               }
@@ -394,7 +462,8 @@
                   "    pm.expect(body.status).to.eql(422);",
                   "    pm.expect(body.transferId).to.be.a('string');",
                   "    pm.expect(body.detail).to.eql('Account is not active');",
-                  "});"
+                  "});",
+                  "pm.test('code ACCOUNT_INACTIVE', () => pm.expect(body.code).to.eql('ACCOUNT_INACTIVE'));"
                 ]
               }
             }
@@ -432,7 +501,8 @@
                   "    pm.expect(body.status).to.eql(422);",
                   "    pm.expect(body.transferId).to.be.a('string');",
                   "    pm.expect(body.detail).to.eql('Account is not active');",
-                  "});"
+                  "});",
+                  "pm.test('code ACCOUNT_INACTIVE', () => pm.expect(body.code).to.eql('ACCOUNT_INACTIVE'));"
                 ]
               }
             }
@@ -473,6 +543,7 @@
                   "pm.test('é a transferência da pasta 2, COMPLETED', () => {",
                   "    pm.expect(body.id).to.eql(pm.collectionVariables.get('transferId'));",
                   "    pm.expect(body.status).to.eql('COMPLETED');",
+                  "    pm.expect(body.failureCode).to.be.null;",
                   "});"
                 ]
               }
@@ -484,6 +555,36 @@
               "raw": "{{transferUrl}}/transfers/{{transferId}}",
               "host": ["{{transferUrl}}"],
               "path": ["transfers", "{{transferId}}"]
+            }
+          }
+        },
+        {
+          "name": "Consultar a transferência recusada (failureCode)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A transferência recusada por saldo insuficiente na pasta 3 fica salva e pode ser consultada.",
+                  "const body = pm.response.json();",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('FAILED com código e motivo', () => {",
+                  "    pm.expect(body.id).to.eql(pm.collectionVariables.get('failedTransferId'));",
+                  "    pm.expect(body.status).to.eql('FAILED');",
+                  "    pm.expect(body.failureCode).to.eql('INSUFFICIENT_BALANCE');",
+                  "    pm.expect(body.failureReason).to.eql('Insufficient balance');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{transferUrl}}/transfers/{{failedTransferId}}",
+              "host": ["{{transferUrl}}"],
+              "path": ["transfers", "{{failedTransferId}}"]
             }
           }
         },
@@ -647,6 +748,9 @@
                   "pm.test('status 422 (regra da entidade, nem chega no account)', () => pm.response.to.have.status(422));",
                   "pm.test('explica o motivo', () => {",
                   "    pm.expect(pm.response.json().detail).to.eql('Source and target accounts must be different');",
+                  "});",
+                  "pm.test('sem code: só a recusa do account traz code', () => {",
+                  "    pm.expect(pm.response.json()).to.not.have.property('code');",
                   "});"
                 ]
               }
@@ -674,7 +778,7 @@
     },
     {
       "name": "6. MANUAL - Account fora do ar (202 PENDING)",
-      "description": "1) PARE o matilha-account (Ctrl+C) e rode a primeira requisição: 202 PENDING.\n2) Suba o account de novo, espere ~1min30 e rode a segunda: o reconciliador já terá marcado COMPLETED.\nNão rode esta pasta junto com as outras no Runner.",
+      "description": "1) PARE o matilha-account (Ctrl+C) e rode a primeira requisição: 202 PENDING. Nenhum evento sai ainda: PENDING não gera evento.\n2) Suba o account de novo, espere ~1min30 e rode a segunda: o reconciliador já terá marcado COMPLETED, e o evento TransferCompleted aparece na Kafka UI.\nNão rode esta pasta junto com as outras no Runner.",
       "item": [
         {
           "name": "Transferência com o account parado (202)",
@@ -686,8 +790,9 @@
                 "exec": [
                   "const body = pm.response.json();",
                   "pm.test('status 202 Accepted', () => pm.response.to.have.status(202));",
-                  "pm.test('transferência PENDING, sem motivo de falha', () => {",
+                  "pm.test('transferência PENDING, sem código nem motivo de falha', () => {",
                   "    pm.expect(body.status).to.eql('PENDING');",
+                  "    pm.expect(body.failureCode).to.be.null;",
                   "    pm.expect(body.failureReason).to.be.null;",
                   "});",
                   "pm.test('Location para consultar depois', () => {",

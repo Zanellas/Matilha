@@ -38,6 +38,12 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      properties:
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
 
 server:
   port: 8082
@@ -75,3 +81,7 @@ matilha:
     interval: PT60S
     min-age: PT30S
     lease: PT5M
+  outbox:
+    interval: PT1S
+    lease: PT1M
+    send-timeout: PT15S
