@@ -24,8 +24,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.matilha.account.dto.TransferRequestDto;
-import com.matilha.account.dto.TransferResponseDto;
+import com.matilha.account.dto.InternalTransferRequestDto;
+import com.matilha.account.dto.InternalTransferResponseDto;
 import com.matilha.account.entity.Account;
 import com.matilha.account.entity.AccountMovement;
 import com.matilha.account.entity.MovementOperation;
@@ -36,7 +36,7 @@ import com.matilha.account.repository.AccountMovementRepository;
 import com.matilha.account.repository.AccountRepository;
 
 @ExtendWith(MockitoExtension.class)
-class TransferServiceTest {
+class InternalTransferServiceTest {
 
     private static final UUID TRANSFER_ID = UUID.fromString("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
     private static final String SOURCE = "12345";
@@ -50,7 +50,7 @@ class TransferServiceTest {
     private AccountMovementRepository accountMovementRepository;
 
     @InjectMocks
-    private TransferService transferService;
+    private InternalTransferService transferService;
 
     private static Account accountWithBalance(String accountNumber, String balance) {
         Account account = new Account(accountNumber, "Holder " + accountNumber, "52998224725",
@@ -61,8 +61,8 @@ class TransferServiceTest {
         return account;
     }
 
-    private static TransferRequestDto request(String source, String target, String amount) {
-        return new TransferRequestDto(TRANSFER_ID, source, target, new BigDecimal(amount));
+    private static InternalTransferRequestDto request(String source, String target, String amount) {
+        return new InternalTransferRequestDto(TRANSFER_ID, source, target, new BigDecimal(amount));
     }
 
     private void givenNewTransfer() {
@@ -133,7 +133,7 @@ class TransferServiceTest {
             givenNewTransfer();
             givenLockedAccounts(accountWithBalance(SOURCE, "500.00"), accountWithBalance(TARGET, "100.00"));
 
-            TransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150.00"));
+            InternalTransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150.00"));
 
             assertThat(response.transferId()).isEqualTo(TRANSFER_ID);
             assertThat(response.sourceAccountNumber()).isEqualTo(SOURCE);
@@ -205,9 +205,9 @@ class TransferServiceTest {
                     AccountMovement.transferDebit(source, TRANSFER_ID, amount),
                     AccountMovement.transferCredit(target, TRANSFER_ID, amount)));
 
-            TransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150.00"));
+            InternalTransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150.00"));
 
-            assertThat(response).isEqualTo(new TransferResponseDto(TRANSFER_ID,
+            assertThat(response).isEqualTo(new InternalTransferResponseDto(TRANSFER_ID,
                     SOURCE, new BigDecimal("350.00"), TARGET, new BigDecimal("250.00"), amount));
         }
 
@@ -232,7 +232,7 @@ class TransferServiceTest {
         void shouldTreatSameAmountWithDifferentScaleAsSameTransfer() {
             givenAppliedTransfer();
 
-            TransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150"));
+            InternalTransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150"));
 
             assertThat(response.amount()).isEqualByComparingTo("150.00");
             verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
@@ -275,7 +275,7 @@ class TransferServiceTest {
                     AccountMovement.transferCredit(target, TRANSFER_ID, amount)));
         }
 
-        private void assertRejectedAsDifferentTransfer(TransferRequestDto request) {
+        private void assertRejectedAsDifferentTransfer(InternalTransferRequestDto request) {
             assertThatThrownBy(() -> transferService.transfer(request))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Transfer already processed with different data");

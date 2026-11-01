@@ -9,7 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 
-public record TransferRequestDto(
+public record InternalTransferRequestDto(
         @NotNull UUID transferId,
         @NotBlank @Pattern(regexp = "\\d{5}") String sourceAccountNumber,
         @NotBlank @Pattern(regexp = "\\d{5}") String targetAccountNumber,

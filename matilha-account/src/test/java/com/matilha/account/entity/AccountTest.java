@@ -13,6 +13,7 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.matilha.account.exception.BusinessException;
+import com.matilha.account.exception.ErrorCode;
 
 class AccountTest {
 
@@ -298,7 +299,8 @@ class AccountTest {
 
             assertThatThrownBy(() -> account.deposit(new BigDecimal("10.00")))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessage("Account is not active");
+                    .hasMessage("Account is not active")
+                    .hasFieldOrPropertyWithValue("code", ErrorCode.ACCOUNT_INACTIVE);
             assertThat(account.getBalance()).isEqualByComparingTo("0.00");
         }
 
@@ -308,7 +310,8 @@ class AccountTest {
 
             assertThatThrownBy(() -> account.deposit(new BigDecimal("10.00")))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessage("Account is not active");
+                    .hasMessage("Account is not active")
+                    .hasFieldOrPropertyWithValue("code", ErrorCode.ACCOUNT_INACTIVE);
         }
     }
 
@@ -338,7 +341,8 @@ class AccountTest {
         void shouldRejectWithdrawGreaterThanBalance() {
             assertThatThrownBy(() -> account.withdraw(new BigDecimal("100.01")))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessage("Insufficient balance");
+                    .hasMessage("Insufficient balance")
+                    .hasFieldOrPropertyWithValue("code", ErrorCode.INSUFFICIENT_BALANCE);
             assertThat(account.getBalance()).isEqualByComparingTo("100.00");
         }
 
@@ -346,7 +350,8 @@ class AccountTest {
         void shouldRejectNullAmount() {
             assertThatThrownBy(() -> account.withdraw(null))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessage("Amount must be positive");
+                    .hasMessage("Amount must be positive")
+                    .hasFieldOrPropertyWithValue("code", ErrorCode.BUSINESS_RULE_VIOLATION);
         }
 
         @ParameterizedTest
@@ -370,7 +375,8 @@ class AccountTest {
 
             assertThatThrownBy(() -> account.withdraw(new BigDecimal("10.00")))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessage("Account is not active");
+                    .hasMessage("Account is not active")
+                    .hasFieldOrPropertyWithValue("code", ErrorCode.ACCOUNT_INACTIVE);
             assertThat(account.getBalance()).isEqualByComparingTo("100.00");
         }
     }

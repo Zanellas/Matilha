@@ -25,7 +25,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import com.matilha.account.dto.DepositRequestDto;
-import com.matilha.account.dto.TransferRequestDto;
+import com.matilha.account.dto.InternalTransferRequestDto;
 import com.matilha.account.entity.Account;
 import com.matilha.account.exception.BusinessException;
 import com.matilha.account.repository.AccountMovementRepository;
@@ -47,7 +47,7 @@ class MoneyMovementConcurrencyTest {
     static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");
 
     @Autowired
-    private TransferService transferService;
+    private InternalTransferService transferService;
 
     @Autowired
     private DepositService depositService;
@@ -77,8 +77,8 @@ class MoneyMovementConcurrencyTest {
         return accountRepository.findByAccountNumber(accountNumber).orElseThrow().getBalance();
     }
 
-    private static TransferRequestDto transfer(UUID transferId, String source, String target, String amount) {
-        return new TransferRequestDto(transferId, source, target, new BigDecimal(amount));
+    private static InternalTransferRequestDto transfer(UUID transferId, String source, String target, String amount) {
+        return new InternalTransferRequestDto(transferId, source, target, new BigDecimal(amount));
     }
 
     /**

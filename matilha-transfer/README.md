@@ -41,7 +41,7 @@ O serviço sobe em `http://localhost:8082`, com o banco na porta `5433` para nã
 | Variável | Padrão | Uso |
 |---|---|---|
 | `ACCOUNT_SERVICE_URL` | `http://localhost:8081` | Endereço do account. No Docker, o `compose.yaml` aponta para `http://account:8081`. |
-| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Endereço do Kafka |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Endereço do Kafka. No Docker, o `compose.yaml` aponta para `kafka:29092`, o listener interno do broker. |
 | `TRANSFER_DB_POOL_SIZE` | `10` | Tamanho do pool de conexões |
 
 ## Perfis
