@@ -40,6 +40,7 @@ class OutboxEventTest {
             assertThat(event.getMessageKey()).isEqualTo(KEY);
             assertThat(event.getPayload()).isEqualTo(PAYLOAD);
             assertThat(event.getPublishedAt()).isNull();
+            assertThat(event.getClaimedUntil()).isNull();
             assertThat(event.getAttempts()).isZero();
             assertThat(event.getLastError()).isNull();
         }
@@ -129,6 +130,45 @@ class OutboxEventTest {
 
             assertThat(event.getAttempts()).isEqualTo(1);
             assertThat(event.getLastError()).isEqualTo("Broker unavailable");
+        }
+    }
+
+    @Nested
+    class ClaimUntil {
+
+        @Test
+        void shouldSetClaimedUntil() {
+            event.claimUntil(NOW);
+
+            assertThat(event.getClaimedUntil()).isEqualTo(NOW);
+        }
+
+        /** Uma nova reserva (depois que a anterior venceu) substitui a antiga. */
+        @Test
+        void shouldReplaceAnEarlierClaim() {
+            event.claimUntil(NOW);
+
+            event.claimUntil(NOW.plusSeconds(60));
+
+            assertThat(event.getClaimedUntil()).isEqualTo(NOW.plusSeconds(60));
+        }
+
+        @Test
+        void shouldRejectNullInstant() {
+            assertThatThrownBy(() -> event.claimUntil(null))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("until must not be null");
+            assertThat(event.getClaimedUntil()).isNull();
+        }
+
+        @Test
+        void shouldRejectClaimingPublishedEvent() {
+            event.markPublished(NOW);
+
+            assertThatThrownBy(() -> event.claimUntil(NOW.plusSeconds(60)))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining(EVENT_ID.toString());
+            assertThat(event.getClaimedUntil()).isNull();
         }
     }
 

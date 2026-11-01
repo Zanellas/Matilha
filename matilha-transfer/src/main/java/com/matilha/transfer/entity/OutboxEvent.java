@@ -53,6 +53,9 @@ public class OutboxEvent implements Persistable<UUID> {
     @Column
     private Instant publishedAt;
 
+    @Column 
+    private Instant claimedUntil;
+
     @Column(nullable = false)
     private int attempts;
 
@@ -111,5 +114,12 @@ public class OutboxEvent implements Persistable<UUID> {
             throw new IllegalArgumentException(field + " must not be blank");
         }
         return value;
+    }
+
+    public void claimUntil(Instant until) {
+        if (publishedAt != null) {
+            throw new IllegalStateException("Event " + id + " was already published");
+        }
+        this.claimedUntil = requireNonNull(until, "until");
     }
 }
