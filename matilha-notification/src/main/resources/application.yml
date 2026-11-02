@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: matilha-notification
+
+  datasource:
+    url: ${NOTIFICATION_DB_URL}
+    username: ${NOTIFICATION_DB_USERNAME}
+    password: ${NOTIFICATION_DB_PASSWORD}
+    hikari:
+      pool-name: notification-pool
+      maximum-pool-size: ${NOTIFICATION_DB_POOL_SIZE:5}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: matilha-notification
+      auto-offset-reset: earliest
+
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+server:
+  port: 8083
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+
+info:
+  app:
+    name: matilha-notification
+    description: Notification service
