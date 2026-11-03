@@ -20,13 +20,11 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import com.matilha.transfer.TestcontainersConfiguration;
 import com.matilha.transfer.entity.OutboxEvent;
 import com.matilha.transfer.repository.OutboxEventRepository;
 
@@ -34,15 +32,11 @@ import com.matilha.transfer.repository.OutboxEventRepository;
  * A busca do publicador (FOR UPDATE SKIP LOCKED), a reserva com prazo (claimed_until) e o registro do resultado.
  * Só dá para testar contra o PostgreSQL de verdade. O Kafka não entra aqui: o envio é do OutboxPublisher.
  */
-@SpringBootTest(properties = "matilha.reconciler.enabled=false")
-@Testcontainers
+@SpringBootTest(properties = { "matilha.reconciler.enabled=false", "spring.kafka.admin.auto-create=false" })
+@Import(TestcontainersConfiguration.class)
 class OutboxServiceTest {
 
     private static final Duration LEASE = Duration.ofMinutes(1);
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");
 
     @Autowired
     private OutboxService outboxService;

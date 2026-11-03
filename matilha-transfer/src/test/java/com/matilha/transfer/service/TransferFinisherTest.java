@@ -12,14 +12,12 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import com.matilha.transfer.TestcontainersConfiguration;
 import com.matilha.transfer.entity.FailureCode;
 import com.matilha.transfer.entity.Transfer;
 import com.matilha.transfer.entity.TransferStatus;
@@ -29,16 +27,12 @@ import com.matilha.transfer.repository.TransferRepository;
  * Roda contra um PostgreSQL real: o que se testa aqui é a transação. A mudança de status e o evento no
  * outbox são gravados juntos, ou nenhum dos dois é.
  */
-@SpringBootTest(properties = "matilha.reconciler.enabled=false")
-@Testcontainers
+@SpringBootTest(properties = { "matilha.reconciler.enabled=false", "spring.kafka.admin.auto-create=false" })
+@Import(TestcontainersConfiguration.class)
 class TransferFinisherTest {
 
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");
 
     @Autowired
     private TransferFinisher transferFinisher;
