@@ -1,12 +1,13 @@
 {
   "info": {
-    "name": "Matilha - Transfer",
-    "description": "Roteiro de testes do matilha-transfer contra o matilha-account, os dois rodando localmente com o perfil dev.\n\nRode as pastas 1 a 5 em ordem com o Collection Runner. A pasta 6 é manual: pare o account antes de rodar.\n\nAs requisições usam as contas de exemplo do perfil dev (10001 a 10005).\n\nAs recusas são conferidas pelo code do Problem Details (INSUFFICIENT_BALANCE, ACCOUNT_NOT_FOUND, ACCOUNT_INACTIVE), que é o contrato. O detail é texto e pode mudar.\n\nCada transferência COMPLETED ou FAILED gera um evento no tópico matilha.transfer.events. Para ver, abra a Kafka UI (http://localhost:8090) depois de rodar o Runner.",
+    "name": "Matilha - Transfer e Notification",
+    "description": "Roteiro de testes do fluxo inteiro: matilha-transfer, matilha-account e matilha-notification, rodando localmente com o perfil dev (docker compose up --build na raiz).\n\nRode as pastas 1 a 6 em ordem com o Collection Runner. A pasta 7 é manual: pare o account antes de rodar.\n\nAs requisições usam as contas de exemplo do perfil dev (10001 a 10005).\n\nAs recusas são conferidas pelo code do Problem Details (INSUFFICIENT_BALANCE, ACCOUNT_NOT_FOUND, ACCOUNT_INACTIVE), que é o contrato. O detail é texto e pode mudar.\n\nCada transferência COMPLETED ou FAILED gera um evento no tópico matilha.transfer.events, e o notification transforma o evento em notificações. A pasta 6 confere essas notificações pelo transferId das pastas 2 e 3. Para ver os eventos, abra a Kafka UI (http://localhost:8090).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "accountUrl", "value": "http://localhost:8081" },
     { "key": "transferUrl", "value": "http://localhost:8082" },
+    { "key": "notificationUrl", "value": "http://localhost:8083" },
     { "key": "amount", "value": "100.00" },
     { "key": "successKey", "value": "" },
     { "key": "transferId", "value": "" },
@@ -40,6 +41,31 @@
             "url": {
               "raw": "{{transferUrl}}/actuator/health",
               "host": ["{{transferUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        },
+        {
+          "name": "Health do notification",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('notification está UP', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/actuator/health",
+              "host": ["{{notificationUrl}}"],
               "path": ["actuator", "health"]
             }
           }
@@ -777,8 +803,353 @@
       ]
     },
     {
-      "name": "6. MANUAL - Account fora do ar (202 PENDING)",
-      "description": "1) PARE o matilha-account (Ctrl+C) e rode a primeira requisição: 202 PENDING. Nenhum evento sai ainda: PENDING não gera evento.\n2) Suba o account de novo, espere ~1min30 e rode a segunda: o reconciliador já terá marcado COMPLETED, e o evento TransferCompleted aparece na Kafka UI.\nNão rode esta pasta junto com as outras no Runner.",
+      "name": "6. Notificações (eventos via Kafka)",
+      "description": "Confere o que o matilha-notification gerou a partir dos eventos das pastas 2 e 3. O caminho é assíncrono (outbox a cada 1s, depois Kafka, depois o consumidor), por isso a primeira requisição espera 3 segundos antes de rodar.\n\nAs notificações são filtradas pelo transferId salvo nas pastas anteriores, então execuções antigas do Runner não atrapalham.",
+      "item": [
+        {
+          "name": "10001 recebeu TRANSFER_SENT (uma só, apesar dos reenvios)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Dá tempo do publicador do outbox (1s) e do consumidor processarem os eventos.",
+                  "setTimeout(() => {}, 3000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const transferId = pm.collectionVariables.get('transferId');",
+                  "const mine = pm.response.json().content.filter(n => n.transferId === transferId);",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('exatamente UMA notificação da transferência da pasta 2', () => pm.expect(mine).to.have.lengthOf(1));",
+                  "pm.test('TRANSFER_SENT para a 10001, sem failureCode', () => {",
+                  "    pm.expect(mine[0].type).to.eql('TRANSFER_SENT');",
+                  "    pm.expect(mine[0].accountNumber).to.eql('10001');",
+                  "    pm.expect(mine[0].failureCode).to.be.null;",
+                  "    pm.expect(mine[0].message).to.include('10002');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=10001&size=100",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "10001" },
+                { "key": "size", "value": "100" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "10002 recebeu TRANSFER_RECEIVED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const transferId = pm.collectionVariables.get('transferId');",
+                  "const mine = pm.response.json().content.filter(n => n.transferId === transferId);",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('exatamente UMA notificação da transferência da pasta 2', () => pm.expect(mine).to.have.lengthOf(1));",
+                  "pm.test('TRANSFER_RECEIVED para a 10002', () => {",
+                  "    pm.expect(mine[0].type).to.eql('TRANSFER_RECEIVED');",
+                  "    pm.expect(mine[0].accountNumber).to.eql('10002');",
+                  "    pm.expect(mine[0].failureCode).to.be.null;",
+                  "    pm.expect(mine[0].message).to.include('10001');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=10002&size=100",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "10002" },
+                { "key": "size", "value": "100" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "10003 recebeu TRANSFER_FAILED com o failureCode",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A transferência recusada por saldo insuficiente na pasta 3 avisa só a conta de origem.",
+                  "const failedId = pm.collectionVariables.get('failedTransferId');",
+                  "const mine = pm.response.json().content.filter(n => n.transferId === failedId);",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('exatamente UMA notificação da transferência recusada', () => pm.expect(mine).to.have.lengthOf(1));",
+                  "pm.test('TRANSFER_FAILED com INSUFFICIENT_BALANCE', () => {",
+                  "    pm.expect(mine[0].type).to.eql('TRANSFER_FAILED');",
+                  "    pm.expect(mine[0].accountNumber).to.eql('10003');",
+                  "    pm.expect(mine[0].failureCode).to.eql('INSUFFICIENT_BALANCE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=10003&size=100",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "10003" },
+                { "key": "size", "value": "100" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Destino de transferência recusada não é avisado (10001)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A 10001 era o destino da transferência recusada da 10003: nenhum dinheiro chegou, então nada a avisar.",
+                  "const failedId = pm.collectionVariables.get('failedTransferId');",
+                  "const mine = pm.response.json().content.filter(n => n.transferId === failedId);",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('nenhuma notificação da transferência recusada', () => pm.expect(mine).to.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=10001&size=100",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "10001" },
+                { "key": "size", "value": "100" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mais recente primeiro (ordem padrão)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const content = pm.response.json().content;",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('createdAt em ordem decrescente', () => {",
+                  "    const dates = content.map(n => Date.parse(n.createdAt));",
+                  "    const sorted = [...dates].sort((a, b) => b - a);",
+                  "    pm.expect(dates).to.eql(sorted);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=10001",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "10001" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Paginação (size=1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('um item por página', () => {",
+                  "    pm.expect(body.content).to.have.lengthOf(1);",
+                  "    pm.expect(body.page.size).to.eql(1);",
+                  "    pm.expect(body.page.number).to.eql(0);",
+                  "    pm.expect(body.page.totalElements).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=10001&size=1",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "10001" },
+                { "key": "size", "value": "1" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "size acima de 100 vira 100",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('page.size limitado a 100', () => pm.expect(pm.response.json().page.size).to.eql(100));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=10001&size=500",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "10001" },
+                { "key": "size", "value": "500" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Conta sem notificações (página vazia, não 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('página vazia', () => {",
+                  "    pm.expect(body.content).to.be.empty;",
+                  "    pm.expect(body.page.totalElements).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=99999",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "99999" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sem accountNumber (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('ProblemDetail', () => pm.expect(pm.response.json().status).to.eql(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"]
+            }
+          }
+        },
+        {
+          "name": "Conta com 4 dígitos (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=1000",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "1000" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Conta com letras (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=abcde",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "abcde" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. MANUAL - Account fora do ar (202 PENDING)",
+      "description": "1) PARE o matilha-account (docker compose stop account, ou Ctrl+C se roda na máquina) e rode a primeira requisição: 202 PENDING. Nenhum evento sai ainda: PENDING não gera evento.\n2) Suba o account de novo, espere ~1min30 e rode as outras duas: o reconciliador já terá marcado COMPLETED, o evento TransferCompleted aparece na Kafka UI e a 10001 recebe a notificação.\nNão rode esta pasta junto com as outras no Runner.",
       "item": [
         {
           "name": "Transferência com o account parado (202)",
@@ -844,6 +1215,39 @@
               "raw": "{{transferUrl}}/transfers/{{pendingTransferId}}",
               "host": ["{{transferUrl}}"],
               "path": ["transfers", "{{pendingTransferId}}"]
+            }
+          }
+        },
+        {
+          "name": "Notificação da PENDING resolvida (10001)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Rode depois da anterior dar COMPLETED: só aí o evento existe.",
+                  "const pendingId = pm.collectionVariables.get('pendingTransferId');",
+                  "const mine = pm.response.json().content.filter(n => n.transferId === pendingId);",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('a transferência que ficou PENDING gerou TRANSFER_SENT', () => {",
+                  "    pm.expect(mine).to.have.lengthOf(1);",
+                  "    pm.expect(mine[0].type).to.eql('TRANSFER_SENT');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=10001&size=100",
+              "host": ["{{notificationUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "accountNumber", "value": "10001" },
+                { "key": "size", "value": "100" }
+              ]
             }
           }
         }
