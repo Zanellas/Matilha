@@ -11,6 +11,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -29,8 +30,21 @@ class NotificationFactoryTest {
 
     /** O failureCode chega como texto, do jeito que está no JSON. */
     private static TransferEventMessageDto event(String type, int version, String failureCode) {
+        return event(type, failureCode, "250.50", version);
+    }
+
+    /** O amount também chega como texto: o transfer publica o BigDecimal com toPlainString(). */
+    private static TransferEventMessageDto event(String type, String failureCode, String amount, int version) {
         return new TransferEventMessageDto(EVENT_ID, type, version, Instant.now(), TRANSFER_ID,
-                SOURCE, TARGET, "250.50", failureCode);
+                SOURCE, TARGET, amount, failureCode);
+    }
+
+    private static String messageOf(List<Notification> notifications, NotificationType type) {
+        return notifications.stream()
+                .filter(notification -> notification.getType() == type)
+                .map(Notification::getMessage)
+                .findFirst()
+                .orElseThrow();
     }
 
     @Nested
@@ -108,6 +122,70 @@ class NotificationFactoryTest {
             assertThat(notifications)
                     .extracting(Notification::getFailureCode)
                     .containsOnlyNulls();
+        }
+    }
+
+    /**
+     * O valor aparece em reais, no formato brasileiro. O espaço depois do "R$" é um espaço comum: o
+     * NumberFormat.getCurrencyInstance usaria um espaço não separável (U+00A0), que parece igual mas não é.
+     */
+    @Nested
+    class Amount {
+
+        @Test
+        void shouldFormatAmountInEveryMessage() {
+            List<Notification> completed = NotificationFactory.from(
+                    event(TransferEventMessageDto.COMPLETED, 1, null));
+            List<Notification> failed = NotificationFactory.from(
+                    event(TransferEventMessageDto.FAILED, 1, "INSUFFICIENT_BALANCE"));
+
+            assertThat(messageOf(completed, NotificationType.TRANSFER_SENT))
+                    .isEqualTo("Você enviou R$ 250,50 para a conta 10002");
+            assertThat(messageOf(completed, NotificationType.TRANSFER_RECEIVED))
+                    .isEqualTo("Você recebeu R$ 250,50 da conta 10001");
+            assertThat(messageOf(failed, NotificationType.TRANSFER_FAILED))
+                    .isEqualTo("Sua transferência de R$ 250,50 para a conta 10002 falhou");
+        }
+
+        @ParameterizedTest
+        @CsvSource(delimiter = '|', value = {
+                "1234567.89 | R$ 1.234.567,89",
+                "1000       | R$ 1.000,00",
+                "100        | R$ 100,00",
+                "0.5        | R$ 0,50",
+                "0.01       | R$ 0,01" })
+        void shouldUseBrazilianSeparatorsAndTwoDecimals(String amount, String expected) {
+            List<Notification> notifications = NotificationFactory.from(
+                    event(TransferEventMessageDto.COMPLETED, null, amount, 1));
+
+            assertThat(messageOf(notifications, NotificationType.TRANSFER_SENT))
+                    .isEqualTo("Você enviou " + expected + " para a conta 10002")
+                    .doesNotContain(" ");
+        }
+
+        /**
+         * Um amount que não é número falha sempre, então é mensagem envenenada: UnsupportedEventException, que vai
+         * direto para a DLT. Um NumberFormatException ou NullPointerException seria repetido para sempre e travaria
+         * a partição. "1,50" fica de fora de propósito: o transfer publica com ponto, a vírgula é só da mensagem.
+         */
+        @ParameterizedTest
+        @NullSource
+        @ValueSource(strings = { "", "   ", "abc", "1,50", "250.50.1", "R$ 250,50" })
+        void shouldRejectInvalidAmount(String amount) {
+            TransferEventMessageDto event = event(TransferEventMessageDto.COMPLETED, null, amount, 1);
+
+            assertThatThrownBy(() -> NotificationFactory.from(event))
+                    .isInstanceOf(UnsupportedEventException.class)
+                    .hasMessageContaining("amount");
+        }
+
+        /** A falha também mostra o valor, então um amount inválido num TransferFailed é recusado do mesmo jeito. */
+        @Test
+        void shouldRejectInvalidAmountInFailedEvent() {
+            TransferEventMessageDto event = event(TransferEventMessageDto.FAILED, "INSUFFICIENT_BALANCE", "abc", 1);
+
+            assertThatThrownBy(() -> NotificationFactory.from(event))
+                    .isInstanceOf(UnsupportedEventException.class);
         }
     }
 
