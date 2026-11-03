@@ -91,7 +91,7 @@ curl "http://localhost:8083/notifications?accountNumber=10001"
       "transferId": "8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
       "accountNumber": "10001",
       "type": "TRANSFER_SENT",
-      "message": "Você enviou 250.50 para a conta 10002",
+      "message": "Você enviou R$ 250,50 para a conta 10002",
       "failureCode": null,
       "createdAt": "2026-11-02T15:30:00Z"
     }
@@ -108,7 +108,7 @@ matilha.transfer.events (Kafka)                     group-id: matilha-notificati
   ├─ lê o JSON como texto e converte                 (TransferEventMessageDto)
   ├─ monta as notificações                           (NotificationFactory, sem Spring)
   │     JSON inválido, versão nova, tipo desconhecido,
-  │     conta inválida ──────────────────────────────▶ DLT na hora
+  │     conta ou valor inválido ─────────────────────▶ DLT na hora
   ├─ eventId já em processed_events? ──sim──▶ ignora a duplicata
   ├─ grava processed_events + notificações           uma transação só
   └─ confirma o offset no Kafka                      só depois do commit
@@ -120,6 +120,8 @@ matilha.transfer.events (Kafka)                     group-id: matilha-notificati
 |---|---|
 | `TransferCompleted` | `TRANSFER_SENT` para a conta de origem e `TRANSFER_RECEIVED` para a de destino |
 | `TransferFailed` | `TRANSFER_FAILED` para a conta de origem, com o `failureCode` |
+
+O valor aparece em reais, no formato brasileiro: o `amount` `"1234567.89"` do evento vira `R$ 1.234.567,89` na mensagem. A formatação usa `DecimalFormat` com os símbolos de `pt-BR`, e não `NumberFormat.getCurrencyInstance`, que poria um espaço não separável (U+00A0) depois do "R$": na tela fica igual, mas quebra comparações de texto e buscas no log.
 
 **Contrato do evento**
 
@@ -140,13 +142,14 @@ matilha.transfer.events (Kafka)                     group-id: matilha-notificati
 
 | Tipo de erro | Exemplos | O que acontece |
 |---|---|---|
-| Mensagem envenenada | JSON inválido, `eventVersion` maior que 1, `eventType` desconhecido, conta vazia ou sem 5 caracteres | Vai **direto** para `matilha.transfer.events.DLT`, sem novas tentativas |
+| Mensagem envenenada | JSON inválido, `eventVersion` maior que 1, `eventType` desconhecido, conta vazia ou sem 5 caracteres, `amount` vazio ou que não é número | Vai **direto** para `matilha.transfer.events.DLT`, sem novas tentativas |
 | Falha de infraestrutura | Banco fora do ar | Tenta de novo **sem limite**, com espera de 1s, 2s, 4s... até 30s |
 
 - **Mensagem envenenada** é aquela em que o defeito está na própria mensagem: ela falha sempre. **Falha de infraestrutura** é aquela em que o defeito está no ambiente: todas as mensagens falham, e todas passariam se o ambiente voltasse. Mandar essas para a DLT encheria o tópico de mensagens boas. Esperar preserva a ordem e não perde nada.
 - A DLT é criada pelo notification com 3 partições. A mensagem vai para a mesma partição da original, por isso a DLT precisa de pelo menos tantas partições quanto o tópico.
 - Os cabeçalhos da mensagem na DLT guardam a exceção, a mensagem de erro e a origem (tópico, partição e offset).
 - O que o banco recusaria (conta com tamanho errado, por exemplo) é recusado antes, no construtor da `Notification`, como `BusinessException`. Sem isso, o erro chegaria como violação de constraint, seria repetido para sempre e travaria a partição.
+- Pelo mesmo motivo, um `amount` inválido vira `UnsupportedEventException` na `NotificationFactory`. Um `NumberFormatException` ou `NullPointerException` cru seria tratado como falha passageira e repetido sem fim.
 - O tópico `matilha.transfer.events` é do transfer, que o cria. O notification cria só a DLT.
 
 Detalhes e alternativas no [ADR-0011](../docs/adr/0011-consumidor-idempotente-e-dlt.md).
@@ -178,12 +181,12 @@ cd matilha-notification
 ./mvnw verify
 ```
 
-O Docker precisa estar rodando, porque os testes de integração sobem um PostgreSQL e um Kafka reais com Testcontainers, nas mesmas versões do compose (`postgres:17` e `apache/kafka:4.3.1`). Os containers ficam no `TestcontainersConfiguration`, importado com `@Import` e reaproveitado entre as classes de teste.
+O Docker precisa estar rodando, porque os testes de integração sobem um PostgreSQL e um Kafka reais com Testcontainers, nas mesmas versões do compose (`postgres:17` e `apache/kafka:4.3.1`). Os containers ficam no `TestcontainersConfiguration`, importado com `@Import` e reaproveitado entre as classes de teste. O account e o transfer seguem o mesmo padrão, só com o PostgreSQL.
 
-- **Montagem das notificações** (`NotificationFactoryTest`): completed gera 2, failed gera 1 com o código, código desconhecido vira o genérico, versão e tipo não suportados são recusados
+- **Montagem das notificações** (`NotificationFactoryTest`): completed gera 2, failed gera 1 com o código, código desconhecido vira o genérico, versão e tipo não suportados são recusados, o valor sai como `R$ 1.234.567,89` (com espaço comum) e um `amount` vazio ou que não é número é recusado
 - **Entidades**: as regras do construtor da `Notification`, a conversão do `FailureCode` e a chave primária de `processed_events` contra o PostgreSQL (o segundo `save` com o mesmo id precisa falhar)
 - **Consumidor** (`TransferEventListenerTest`, Kafka real): completed, failed, código desconhecido, campos desconhecidos e o mesmo evento enviado duas vezes. Para provar que a cópia repetida já foi consumida sem usar `sleep`, o teste envia um evento "marcador" com a mesma chave logo depois: quando o marcador aparece, a cópia já passou.
-- **DLT** (`TransferEventDeadLetterTest`, Kafka real): JSON inválido, versão nova, tipo desconhecido e conta vazia chegam à DLT, na mesma partição e com os cabeçalhos do erro. Uma mensagem envenenada não trava as seguintes.
+- **DLT** (`TransferEventDeadLetterTest`, Kafka real): JSON inválido, versão nova, tipo desconhecido, conta vazia e valor inválido chegam à DLT, na mesma partição e com os cabeçalhos do erro. Uma mensagem envenenada não trava as seguintes.
 - **Consulta** (`NotificationQueryTest`, PostgreSQL real): filtro por conta, ordem, paginação e mapeamento
 - **Controller** (`NotificationControllerTest`, MockMvc): página, ordem padrão e limite de 100 do `PageableConfig`, `400` sem `accountNumber` ou com conta inválida e `500` sem vazar detalhes
 
@@ -222,10 +225,8 @@ matilha-notification/
 Fora do escopo desta fase, de propósito:
 
 - E-mail, SMS ou push de verdade, templates de mensagem e preferências do usuário
-- Valor formatado como "R$ 250,50" na mensagem
 - `@RetryableTopic` (tópicos de retry com atraso, que não travam a partição)
 - Schema Registry com Avro, para validar o contrato na publicação
 - Uma ferramenta para reprocessar a DLT
 - Limpeza dos registros antigos de `processed_events`
 - `?sort=` com campo inexistente devolvendo `400`, e não `500` (vale para o account também)
-- Padronizar o `TestcontainersConfiguration` reutilizável nos três serviços
