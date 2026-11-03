@@ -11,7 +11,10 @@ public class PageableConfig {
 
     @Bean
     PageableHandlerMethodArgumentResolverCustomizer pageableCustomizer() {
-        return resolver -> resolver.setFallbackPageable(
-                PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt")));
+        return resolver -> {
+            resolver.setFallbackPageable(PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt")));
+            resolver.setMaxPageSize(100);
+        };
+
     }
 }

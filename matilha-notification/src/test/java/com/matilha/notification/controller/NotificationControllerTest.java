@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -135,6 +137,35 @@ class NotificationControllerTest {
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
         verify(notificationService).findByAccount(eq(ACCOUNT), captor.capture());
         assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+    }
+
+    /**
+     * Um cliente não pode pedir a tabela inteira de uma vez. Como o PageableConfig declara o próprio customizer,
+     * o do Spring Boot não é criado e o max-page-size do application.yml não vale: o limite precisa estar no PageableConfig.
+     */
+    @Test
+    void shouldCapPageSizeAt100() throws Exception {
+        when(notificationService.findByAccount(anyString(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT).param("size", "5000"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(notificationService).findByAccount(eq(ACCOUNT), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+    }
+
+    /** Mesmo formato dos outros serviços: 5 dígitos. Fora disso é erro do cliente, não uma página vazia. */
+    @ParameterizedTest
+    @ValueSource(strings = { "abc", "1234", "123456", "1000a", " " })
+    void shouldReturnProblemDetailForInvalidAccountNumber(String accountNumber) throws Exception {
+        mockMvc.perform(get("/notifications").param("accountNumber", accountNumber))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(400));
+
+        verify(notificationService, never()).findByAccount(anyString(), any(Pageable.class));
     }
 
     /** O notification não conhece as contas: conta sem notificações é uma página vazia, não 404. */
