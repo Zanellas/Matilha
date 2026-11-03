@@ -15,14 +15,12 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import com.matilha.transfer.TestcontainersConfiguration;
 import com.matilha.transfer.repository.OutboxEventRepository;
 
 import jakarta.persistence.EntityManagerFactory;
@@ -33,8 +31,9 @@ import jakarta.persistence.EntityManagerFactory;
  */
 @SpringBootTest(properties = {
         "matilha.reconciler.enabled=false",
+        "spring.kafka.admin.auto-create=false",
         "spring.jpa.properties.hibernate.generate_statistics=true" })
-@Testcontainers
+@Import(TestcontainersConfiguration.class)
 class OutboxPersistenceTest {
 
     private static final String COMPLETED = "TransferCompleted";
@@ -43,10 +42,6 @@ class OutboxPersistenceTest {
     private static final String PAYLOAD = """
             {"eventType": "TransferCompleted", "amount": "250.50"}
             """;
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");
 
     @Autowired
     private JdbcTemplate jdbcTemplate;

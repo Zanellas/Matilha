@@ -18,12 +18,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import com.matilha.account.TestcontainersConfiguration;
 import com.matilha.account.dto.DepositRequestDto;
 import com.matilha.account.dto.InternalTransferRequestDto;
 import com.matilha.account.entity.Account;
@@ -35,16 +33,12 @@ import com.matilha.account.repository.AccountRepository;
  * Roda contra um PostgreSQL real (Flyway + locks de verdade), por isso precisa do Docker.
  */
 @SpringBootTest
-@Testcontainers
+@Import(TestcontainersConfiguration.class)
 class MoneyMovementConcurrencyTest {
 
     private static final int THREADS = 8;
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");
 
     @Autowired
     private InternalTransferService transferService;

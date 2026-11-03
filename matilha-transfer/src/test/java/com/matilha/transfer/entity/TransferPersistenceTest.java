@@ -22,14 +22,12 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import com.matilha.transfer.TestcontainersConfiguration;
 import com.matilha.transfer.repository.TransferRepository;
 import com.matilha.transfer.service.TransferService;
 
@@ -37,16 +35,12 @@ import com.matilha.transfer.service.TransferService;
  * Roda contra um PostgreSQL real com as migrações do Flyway, por isso precisa do Docker.
  * Se a migração não bater com a entidade, o contexto nem sobe (ddl-auto: validate).
  */
-@SpringBootTest(properties = "matilha.reconciler.enabled=false")
-@Testcontainers
+@SpringBootTest(properties = { "matilha.reconciler.enabled=false", "spring.kafka.admin.auto-create=false" })
+@Import(TestcontainersConfiguration.class)
 class TransferPersistenceTest {
 
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");
 
     @Autowired
     private TransferRepository transferRepository;
