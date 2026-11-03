@@ -43,3 +43,9 @@ info:
   app:
     name: matilha-notification
     description: Notification service
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

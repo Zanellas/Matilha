@@ -16,7 +16,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 
 import com.matilha.notification.TestcontainersConfiguration;
 import com.matilha.notification.config.KafkaConfig;
-import com.matilha.notification.dto.TransferEventMessage;
+import com.matilha.notification.dto.TransferEventMessageDto;
 import com.matilha.notification.entity.FailureCode;
 import com.matilha.notification.entity.Notification;
 import com.matilha.notification.entity.NotificationType;
@@ -49,7 +49,7 @@ class TransferEventListenerTest {
         UUID eventId = UUID.randomUUID();
         UUID transferId = UUID.randomUUID();
 
-        send(json(eventId, TransferEventMessage.COMPLETED, transferId, null));
+        send(json(eventId, TransferEventMessageDto.COMPLETED, transferId, null));
 
         await().atMost(TIMEOUT).untilAsserted(() -> assertThat(notificationsOf(transferId))
                 .extracting(Notification::getAccountNumber, Notification::getType, Notification::getFailureCode)
@@ -63,7 +63,7 @@ class TransferEventListenerTest {
     void shouldCreateOneFailedNotificationWithCode() {
         UUID transferId = UUID.randomUUID();
 
-        send(json(UUID.randomUUID(), TransferEventMessage.FAILED, transferId, "ACCOUNT_INACTIVE"));
+        send(json(UUID.randomUUID(), TransferEventMessageDto.FAILED, transferId, "ACCOUNT_INACTIVE"));
 
         await().atMost(TIMEOUT).untilAsserted(() -> assertThat(notificationsOf(transferId))
                 .extracting(Notification::getAccountNumber, Notification::getType, Notification::getFailureCode)
@@ -75,7 +75,7 @@ class TransferEventListenerTest {
     void shouldNotifyFailureWithGenericCodeWhenCodeIsUnknown() {
         UUID transferId = UUID.randomUUID();
 
-        send(json(UUID.randomUUID(), TransferEventMessage.FAILED, transferId, "ACCOUNT_BLOCKED"));
+        send(json(UUID.randomUUID(), TransferEventMessageDto.FAILED, transferId, "ACCOUNT_BLOCKED"));
 
         await().atMost(TIMEOUT).untilAsserted(() -> assertThat(notificationsOf(transferId))
                 .extracting(Notification::getType, Notification::getFailureCode)
@@ -90,12 +90,12 @@ class TransferEventListenerTest {
     @Test
     void shouldSaveNotificationsOnlyOnceWhenEventIsDeliveredTwice() {
         UUID transferId = UUID.randomUUID();
-        String payload = json(UUID.randomUUID(), TransferEventMessage.COMPLETED, transferId, null);
+        String payload = json(UUID.randomUUID(), TransferEventMessageDto.COMPLETED, transferId, null);
         UUID markerTransferId = UUID.randomUUID();
 
         send(payload);
         send(payload);
-        send(json(UUID.randomUUID(), TransferEventMessage.COMPLETED, markerTransferId, null));
+        send(json(UUID.randomUUID(), TransferEventMessageDto.COMPLETED, markerTransferId, null));
 
         await().atMost(TIMEOUT).untilAsserted(() -> assertThat(notificationsOf(markerTransferId)).hasSize(2));
         assertThat(notificationsOf(transferId)).hasSize(2);
@@ -105,7 +105,7 @@ class TransferEventListenerTest {
     @Test
     void shouldIgnoreUnknownFields() {
         UUID transferId = UUID.randomUUID();
-        String payload = json(UUID.randomUUID(), TransferEventMessage.COMPLETED, transferId, null)
+        String payload = json(UUID.randomUUID(), TransferEventMessageDto.COMPLETED, transferId, null)
                 .replaceFirst("\\{", "{\"channel\":\"pix\",\"metadata\":{\"origin\":\"app\"},");
 
         send(payload);

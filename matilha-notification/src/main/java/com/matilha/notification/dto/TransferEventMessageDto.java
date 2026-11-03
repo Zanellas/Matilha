@@ -6,7 +6,7 @@ import java.util.UUID;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record TransferEventMessage(
+public record TransferEventMessageDto(
         UUID eventId,
         String eventType,
         int eventVersion,
