@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.matilha.notification.dto.NotificationResponseDto;
 import com.matilha.notification.service.NotificationService;
 
+import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -22,7 +23,7 @@ public class NotificationController {
 
     @GetMapping
     public ResponseEntity<PagedModel<NotificationResponseDto>> findByAccount(
-            @RequestParam String accountNumber, Pageable pageable) {
+            @RequestParam @Pattern(regexp = "\\d{5}") String accountNumber, Pageable pageable) {
         return ResponseEntity.ok(new PagedModel<>(notificationService.findByAccount(accountNumber, pageable)));
     }
 

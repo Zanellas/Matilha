@@ -28,13 +28,16 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.matilha.account.config.PageableConfig;
 import com.matilha.account.dto.AccountResponseDto;
 import com.matilha.account.dto.AccountSummaryDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
@@ -44,7 +47,9 @@ import com.matilha.account.exception.AccountNotFoundException;
 import com.matilha.account.exception.BusinessException;
 import com.matilha.account.service.AccountService;
 
+/** O @WebMvcTest não carrega classes @Configuration; o PageableConfig entra pelo @Import para valer na listagem. */
 @WebMvcTest(AccountController.class)
+@Import(PageableConfig.class)
 class AccountControllerTest {
 
     @Autowired
@@ -256,6 +261,37 @@ class AccountControllerTest {
             verify(accountService).findAll(captor.capture());
             assertThat(captor.getValue().getPageNumber()).isEqualTo(2);
             assertThat(captor.getValue().getPageSize()).isEqualTo(5);
+        }
+
+        /** Sem parâmetros vale o PageableConfig: primeira página, 20 itens, mais recente primeiro. */
+        @Test
+        void shouldUseDefaultsFromPageableConfig() throws Exception {
+            when(accountService.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+            mockMvc.perform(get("/accounts"))
+                    .andExpect(status().isOk());
+
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(accountService).findAll(captor.capture());
+            assertThat(captor.getValue().getPageNumber()).isZero();
+            assertThat(captor.getValue().getPageSize()).isEqualTo(20);
+            assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+        }
+
+        /**
+         * Como o PageableConfig declara o próprio customizer, o do Spring Boot não é criado e o
+         * spring.data.web.pageable.max-page-size do application.yml é ignorado: o limite precisa estar no PageableConfig.
+         */
+        @Test
+        void shouldCapPageSizeAt100() throws Exception {
+            when(accountService.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+            mockMvc.perform(get("/accounts").param("size", "5000"))
+                    .andExpect(status().isOk());
+
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(accountService).findAll(captor.capture());
+            assertThat(captor.getValue().getPageSize()).isEqualTo(100);
         }
     }
 

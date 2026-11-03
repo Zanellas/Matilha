@@ -74,7 +74,8 @@ Health check: http://localhost:8083/actuator/health. Probes em `/actuator/health
 |---|---|---|---|
 | `GET` | `/notifications?accountNumber=10001` | Notificações de uma conta, paginadas | `200` |
 
-- **Paginação:** `page` e `size`, no mesmo formato do account. Sem parâmetros, vale a primeira página com 20 itens, a mais recente primeiro.
+- **Conta:** 5 dígitos, como nos outros serviços. Fora disso, `400`.
+- **Paginação:** `page` e `size`, no mesmo formato do account. Sem parâmetros, vale a primeira página com 20 itens, a mais recente primeiro. Um `size` acima de 100 é reduzido para 100.
 - **Ordem:** por padrão `createdAt` decrescente, que é a ordem do índice `(account_number, created_at DESC)`. O cliente pode pedir outra com `?sort=`, como no account.
 - **Conta sem notificações** (ou que não existe): página vazia, e não `404`. O notification não conhece as contas, só as notificações que gerou.
 
@@ -156,7 +157,7 @@ Todas as respostas de erro seguem o formato Problem Details, como nos outros ser
 
 | Status | Quando |
 |---|---|
-| `400` | `accountNumber` ausente |
+| `400` | `accountNumber` ausente ou sem 5 dígitos |
 | `500` | Erro inesperado (o detalhe vai só para o log) |
 
 ## Banco de dados
@@ -184,7 +185,7 @@ O Docker precisa estar rodando, porque os testes de integração sobem um Postgr
 - **Consumidor** (`TransferEventListenerTest`, Kafka real): completed, failed, código desconhecido, campos desconhecidos e o mesmo evento enviado duas vezes. Para provar que a cópia repetida já foi consumida sem usar `sleep`, o teste envia um evento "marcador" com a mesma chave logo depois: quando o marcador aparece, a cópia já passou.
 - **DLT** (`TransferEventDeadLetterTest`, Kafka real): JSON inválido, versão nova, tipo desconhecido e conta vazia chegam à DLT, na mesma partição e com os cabeçalhos do erro. Uma mensagem envenenada não trava as seguintes.
 - **Consulta** (`NotificationQueryTest`, PostgreSQL real): filtro por conta, ordem, paginação e mapeamento
-- **Controller** (`NotificationControllerTest`, MockMvc): página, ordem padrão do `PageableConfig`, `400` sem `accountNumber` e `500` sem vazar detalhes
+- **Controller** (`NotificationControllerTest`, MockMvc): página, ordem padrão e limite de 100 do `PageableConfig`, `400` sem `accountNumber` ou com conta inválida e `500` sem vazar detalhes
 
 O consumidor é esperado com o Awaitility, nunca com `Thread.sleep`.
 
