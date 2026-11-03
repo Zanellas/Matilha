@@ -116,6 +116,21 @@ class TransferEventDeadLetterTest {
         assertThat(notificationsOf(transferId)).isEmpty();
     }
 
+    /** Um valor que não é número falha sempre: vai para a DLT, e não fica sendo repetido com espera crescente. */
+    @Test
+    void shouldSendEventWithInvalidAmountToDlt() {
+        UUID eventId = UUID.randomUUID();
+        UUID transferId = UUID.randomUUID();
+        String payload = json(eventId, TransferEventMessageDto.COMPLETED, 1, transferId, null)
+                .replace("\"amount\":\"250.50\"", "\"amount\":\"abc\"");
+
+        send(payload);
+
+        assertThat(exceptionClasses(awaitInDlt(payload))).contains("UnsupportedEventException");
+        assertThat(processedEventRepository.existsById(eventId)).isFalse();
+        assertThat(notificationsOf(transferId)).isEmpty();
+    }
+
     /** A mensagem envenenada sai do caminho: o evento seguinte, na mesma partição, é processado normalmente. */
     @Test
     void shouldKeepConsumingAfterPoisonMessage() {
