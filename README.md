@@ -15,7 +15,7 @@ flowchart LR
     tdb[("PostgreSQL<br/>transfer")]
     adb[("PostgreSQL<br/>account")]
     kafka{{"Kafka"}}
-    notification["matilha-notification<br/>(planejado)"]
+    notification["matilha-notification<br/>:8083 (esqueleto)"]
 
     client -->|"POST /transfers"| transfer
     client -->|"/accounts"| account
@@ -23,16 +23,16 @@ flowchart LR
     transfer -->|"POST /internal/transfers<br/>(REST, idempotente)"| account
     transfer --- tdb
     account --- adb
-    transfer -.->|"eventos via outbox<br/>(em andamento)"| kafka
-    kafka -.-> notification
+    transfer -->|"eventos via outbox"| kafka
+    kafka -.->|"consumo<br/>(em andamento)"| notification
 ```
 
 | Serviço | Responsabilidade | Status |
 |---|---|---|
 | [matilha-account](matilha-account/) | Contas, saldo e movimentações. É o único serviço que altera saldos. | ✅ Pronto |
-| [matilha-transfer](matilha-transfer/) | Recebe pedidos de transferência, pede ao account para mover o dinheiro e guarda o resultado | ✅ Fase síncrona pronta, eventos em andamento |
+| [matilha-transfer](matilha-transfer/) | Recebe pedidos de transferência, pede ao account para mover o dinheiro, guarda o resultado e publica o evento | ✅ Pronto |
+| [matilha-notification](matilha-notification/) | Consome os eventos de transferência e registra a notificação de cada conta envolvida | 🚧 Esqueleto |
 | matilha-gateway | Porta de entrada da API e roteamento | 🚧 Planejado |
-| matilha-notification | Consome os eventos de transferência e registra a notificação de cada conta envolvida | 🚧 Planejado |
 
 ## Como rodar
 
@@ -63,6 +63,8 @@ curl -i -X POST http://localhost:8082/transfers \
 
 Rode o mesmo comando de novo: a resposta é a mesma e o dinheiro só sai da conta uma vez.
 
+O `compose.yaml` da raiz inclui a infraestrutura (`infra/compose.yaml`: Kafka e Kafka UI) e o compose de cada serviço. Para subir só uma parte, rode na raiz com o nome dos serviços, por exemplo `docker compose up -d transfer-db kafka`.
+
 Outros modos de rodar, endpoints, regras e testes estão no README de cada serviço. A [collection do Postman](postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro.
 
 ## Decisões principais
@@ -73,6 +75,7 @@ Outros modos de rodar, endpoints, regras e testes estão no README de cada servi
 - **Dados pessoais ficam no account.** Os eventos de transferência levam só números de conta, valor e código do resultado, nunca nome, e-mail ou telefone. Por isso o matilha-notification não manda e-mail: ele registra no banco e no log que a notificação foi gerada para a conta. Enviar e-mail de verdade exigiria que ele consultasse o account de forma síncrona ou que o evento carregasse dados pessoais, e os dois anulam o motivo de usar eventos. O que ele demonstra é o consumo idempotente: uma mensagem repetida não gera uma segunda notificação.
 - **Timeout não é falha.** Se o account não responde, a transferência fica `PENDING`, não `FAILED`, porque o dinheiro pode ter sido movido e a resposta ter se perdido. Um reconciliador agendado reenvia as pendentes. Ele usa `FOR UPDATE SKIP LOCKED` com uma reserva com prazo, então funciona com várias réplicas.
 - **Sem transação aberta durante chamada de rede.** O transfer grava `PENDING`, chama o account fora de transação e grava o resultado numa segunda transação.
+- **Eventos pelo transactional outbox.** O evento é gravado na tabela `outbox_events` na mesma transação que muda o status da transferência, então não existe transferência terminada sem evento, nem evento de algo que não foi gravado. Um publicador agendado envia ao Kafka e só marca como publicado depois da confirmação do broker. Ele usa o mesmo `SKIP LOCKED` com reserva do reconciliador. A entrega é "pelo menos uma vez", e o consumidor descarta duplicatas pelo `eventId`.
 - **Concorrência resolvida no banco.** O account trava as contas com `SELECT ... FOR UPDATE`, sempre na mesma ordem, o que evita deadlock. O saldo não negativo é garantido na entidade e numa constraint.
 - **Schema só pelo Flyway.** O Hibernate roda com `ddl-auto: validate`, e os testes sobem um PostgreSQL real com Testcontainers, então testam o mesmo schema de produção.
 - **Erros no formato Problem Details (RFC 9457), com um `code` como contrato.** O account devolve códigos como `INSUFFICIENT_BALANCE`. O transfer converte esses códigos para um enum próprio, grava na transferência e repassa no evento. Nenhum serviço depende do texto em inglês do `detail`, e o detalhe interno de um erro inesperado fica só no log.
@@ -85,7 +88,8 @@ Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), PostgreSQL 1
 
 - [x] matilha-account: contas, depósitos e transferências com lock e idempotência
 - [x] matilha-transfer: orquestração síncrona com idempotência e reconciliador de pendentes
-- [ ] Eventos de transferência no Kafka com transactional outbox (tabela criada, publicação em andamento)
+- [x] Códigos de erro no Problem Details, propagados do account até o evento
+- [x] Eventos de transferência no Kafka com transactional outbox
 - [ ] matilha-notification consumindo os eventos (registro idempotente, sem envio real)
 - [ ] matilha-gateway como porta de entrada
 - [ ] Autenticação com Keycloak

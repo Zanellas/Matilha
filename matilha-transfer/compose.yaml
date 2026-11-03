@@ -1,8 +1,5 @@
 name: matilha
 
-include:
-  - ../infra/compose.yaml
-
 services:
   transfer-db:
     image: postgres:17

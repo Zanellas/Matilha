@@ -32,7 +32,7 @@ O `.env` está no `.gitignore` e nunca deve ser commitado.
 docker compose up --build
 ```
 
-O compose da raiz inclui o `compose.yaml` de cada serviço, e o Kafka vem de `infra/compose.yaml`, incluído pelo transfer. Cada serviço continua com o próprio `.env` na sua pasta.
+O compose da raiz inclui a infraestrutura (`infra/compose.yaml`, com o Kafka) e o `compose.yaml` de cada serviço. Cada serviço continua com o próprio `.env` na sua pasta.
 
 **2b. Só o account (banco e serviço no Docker)**
 
@@ -46,8 +46,10 @@ docker compose up --build
 ```bash
 cd matilha-account
 docker compose up -d account-db
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+./mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"
 ```
+
+As aspas no `-D...` são necessárias no PowerShell, que quebraria o argumento no ponto. No bash elas não atrapalham.
 
 O serviço sobe em `http://localhost:8081`. As duas portas (8081 e 5432) ficam ligadas só a `127.0.0.1`. Use um modo de cada vez, porque os nomes dos containers e as portas são fixos.
 

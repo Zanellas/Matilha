@@ -28,13 +28,17 @@ O `.env` está no `.gitignore` e nunca deve ser commitado.
 
 **2a. Sistema inteiro:** `docker compose up --build` na raiz do repositório.
 
-**2b. Banco no Docker e serviço na máquina (bom para desenvolver)**
+**2b. Banco e Kafka no Docker, serviço na máquina (bom para desenvolver)**
 
 ```bash
+# na raiz do repositório
+docker compose up -d transfer-db kafka
+
 cd matilha-transfer
-docker compose up -d transfer-db
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+./mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"
 ```
+
+O `docker compose` roda **na raiz**, e não dentro de `matilha-transfer/`. O transfer depende do Kafka, e o Kafka é definido em `infra/compose.yaml`, que só a raiz inclui. Rodado sozinho, o compose do transfer não encontra o serviço `kafka`. As aspas no `-D...` são necessárias no PowerShell, que quebraria o argumento no ponto.
 
 O serviço sobe em `http://localhost:8082`, com o banco na porta `5433` para não conflitar com o do account. As duas portas ficam ligadas só a `127.0.0.1`.
 
@@ -185,11 +189,36 @@ Uma transferência fica `PENDING` quando o account não respondeu, ou quando ele
 | `matilha.reconciler.interval` | `PT60S` | Intervalo entre as rodadas |
 | `matilha.reconciler.min-age` | `PT30S` | Idade mínima de uma `PENDING` para ser reenviada. Precisa ser maior que os timeouts do account somados. |
 | `matilha.reconciler.lease` | `PT5M` | Duração da reserva. Precisa cobrir um lote inteiro (20 × 7s no pior caso). |
-| `matilha.reconciler.enabled` | `true` | Liga ou desliga o agendamento |
+| `matilha.reconciler.enabled` | `true` | Liga ou desliga **todo** o agendamento: o reconciliador e o publicador de eventos. Os testes usam `false`. |
 
-**Eventos (em andamento)**
+**Eventos (transactional outbox)**
 
-Quando uma transferência termina, o transfer vai publicar `TransferCompleted` ou `TransferFailed` no tópico `matilha.transfer.events` do Kafka. O evento leva contas, valor e o `failureCode`, mas não o `failureReason`: nenhum consumidor deve depender de um texto. Para não perder evento nem publicar evento de algo que não foi gravado, ele usa o padrão transactional outbox: o evento é gravado na tabela `outbox_events` na mesma transação que muda o status, e um publicador separado envia ao Kafka depois. A tabela e o tópico já existem. A publicação ainda não.
+Quando uma transferência termina, o transfer publica `TransferCompleted` ou `TransferFailed` no tópico `matilha.transfer.events` do Kafka, com a conta de origem como chave. O evento leva contas, valor e o `failureCode`, mas não o `failureReason`: nenhum consumidor deve depender de um texto.
+
+```
+TransferFinisher.complete() / fail()      uma transação só
+  ├─ grava o status da transferência
+  └─ grava o evento em outbox_events
+
+OutboxPublisher (a cada 1s)
+  ├─ reserva até 50 eventos não publicados  transação curta: SKIP LOCKED + claimed_until
+  └─ para cada um:
+       ├─ envia ao Kafka e espera a confirmação   fora de transação
+       ├─ ok   → marca published_at
+       └─ erro → soma em attempts, guarda last_error e para o lote
+```
+
+- **Mesma transação:** se o evento não puder ser gravado, a mudança de status também volta. Não existe transferência terminada sem evento, nem evento de algo que não foi gravado. Se o reconciliador e uma requisição terminarem a mesma transferência, o `@Version` desfaz a transação de quem perdeu, junto com o evento dela.
+- **Bean separado:** o `TransferFinisher` existe porque o `@Transactional` funciona por proxy. Um método chamado de dentro da própria classe não abriria a transação.
+- **`published_at` só depois da confirmação:** o envio espera o broker gravar (`acks: all`). Se o processo cair entre a confirmação e a marcação, o evento sai de novo quando a reserva vencer. A entrega é "pelo menos uma vez", e o notification descarta duplicatas pelo `eventId`, que também é o `id` da linha no outbox.
+- **Para na primeira falha:** se o Kafka caiu, os próximos envios também iam esperar o tempo limite. Os que sobraram voltam quando a reserva vencer.
+
+| Propriedade | Padrão | Significado |
+|---|---|---|
+| `matilha.outbox.interval` | `PT1S` | Intervalo entre as rodadas do publicador |
+| `matilha.outbox.lease` | `PT1M` | Duração da reserva de um lote |
+| `matilha.outbox.send-timeout` | `PT15S` | Quanto o publicador espera a confirmação do Kafka. É maior que o `delivery.timeout.ms` do produtor (10s), para o erro registrado ser o do Kafka. |
+| `spring.kafka.producer.properties.max.block.ms` | `5000` | Quanto o `send()` pode travar esperando o broker. O padrão do Kafka é 60s. |
 
 ## Erros
 
@@ -210,7 +239,7 @@ As migrações Flyway ficam em `src/main/resources/db/migration`, e o Hibernate 
 | Tabela | Conteúdo |
 |---|---|
 | `transfers` | Contas, valor, status, código e motivo da falha, `idempotency_key` (única), `claimed_until` (reserva do reconciliador) e `version` (lock otimista) |
-| `outbox_events` | Eventos a publicar no Kafka: tipo, chave, payload em JSONB, `published_at` e tentativas. Um evento por tipo para cada transferência. |
+| `outbox_events` | Eventos a publicar no Kafka: tipo, chave, payload em JSONB, `published_at`, `claimed_until` (reserva do publicador), tentativas e último erro. Um evento por tipo para cada transferência. |
 
 O banco também garante as regras com constraints: status válido, valor positivo, contas diferentes, código de falha válido e código presente só nas `FAILED`. Índices parciais sobre as `PENDING` e sobre os eventos não publicados deixam as buscas rápidas mesmo com as tabelas grandes.
 
@@ -227,6 +256,9 @@ O Docker precisa estar rodando, porque os testes que sobem a aplicação usam um
 - **Entidades**: validações, transições de status, comparação de pedidos e o evento do outbox
 - **Persistência**: as migrações contra o PostgreSQL, as constraints, a chave de idempotência única, a tabela do outbox e a busca do reconciliador. Um teste abre duas transações ao mesmo tempo e confere que o `SKIP LOCKED` dá lotes diferentes para cada uma, sem esperar.
 - **Reconciliador**: o corte por idade, o lote, a reserva e a continuidade quando uma transferência falha (com Mockito)
+- **Outbox na mesma transação** (`TransferFinisherTest`, contra o PostgreSQL): o status e o evento são gravados juntos. Se o evento não puder ser gravado, o status volta. Quando duas cópias terminam a mesma transferência, só o evento da vencedora fica.
+- **Reserva do outbox** (`OutboxServiceTest`, contra o PostgreSQL): a busca com `SKIP LOCKED`, a reserva com prazo, a marcação de publicado e o registro de falhas
+- **Publicador** (`OutboxPublisherTest`, com o Kafka simulado): marca como publicado só depois da confirmação, registra a falha e o tempo esgotado, e para o lote na primeira falha
 - **AccountClient**: as respostas do account contra um servidor HTTP de verdade, incluindo conexão recusada e timeout. O teste de timeout leva uns 5 segundos.
 - **Service**: sucesso, recusa, indisponibilidade, reenvio e corrida pela mesma chave (com Mockito)
 - **Controller**: status HTTP de cada resultado, header de idempotência, validação e erros (com MockMvc)
@@ -248,14 +280,14 @@ O workflow [transfer-ci.yml](../.github/workflows/transfer-ci.yml) roda em push 
 matilha-transfer/
 ├── src/main/java/com/matilha/transfer/
 │   ├── client/        # AccountClient (chamadas ao matilha-account)
-│   ├── component/     # TransferReconciler (reenvio agendado das pendentes)
+│   ├── component/     # TransferReconciler e OutboxPublisher (tarefas agendadas)
 │   ├── config/        # OpenAPI, agendamento e tópico do Kafka
 │   ├── controller/    # Endpoints de transferência
 │   ├── dto/           # Records de request/response (próprios e do account) e eventos
 │   ├── entity/        # Transfer, TransferStatus e OutboxEvent
 │   ├── exception/     # Exceções e handler global
 │   ├── repository/    # Repositórios Spring Data
-│   └── service/       # Orquestração da transferência
+│   └── service/       # TransferService, TransferFinisher (resultado + evento) e OutboxService
 ├── src/main/resources/
 │   └── db/migration/  # Migrações versionadas
 ├── Dockerfile

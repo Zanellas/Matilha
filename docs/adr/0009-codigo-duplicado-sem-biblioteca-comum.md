@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # ADR-0009: Código transversal duplicado em vez de biblioteca compartilhada
 
 - **Status:** Aceito
