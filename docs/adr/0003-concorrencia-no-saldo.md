@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # ADR-0003: Concorrência no saldo com lock pessimista em ordem fixa
 
 - **Status:** Aceito

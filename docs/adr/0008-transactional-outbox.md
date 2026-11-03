@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # ADR-0008: Transactional Outbox para publicar eventos
 
 - **Status:** Aceito

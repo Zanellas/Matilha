@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # ADR-0004: Idempotência ponta a ponta
 
 - **Status:** Aceito

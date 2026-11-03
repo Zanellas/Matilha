@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # ADR-0005: Chamada síncrona fora de transação e `PENDING` quando o resultado é desconhecido
 
 - **Status:** Aceito

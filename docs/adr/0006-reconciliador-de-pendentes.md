@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # ADR-0006: Reconciliador de pendentes com `SKIP LOCKED` e lease
 
 - **Status:** Aceito

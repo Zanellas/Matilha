@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # ADR-0007: Códigos de erro estáveis entre serviços
 
 - **Status:** Aceito

@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # ADR-0002: O account é o único dono do saldo; o transfer orquestra
 
 - **Status:** Aceito

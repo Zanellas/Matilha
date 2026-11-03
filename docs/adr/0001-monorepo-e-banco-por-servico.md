@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # ADR-0001: Monorepo com serviços independentes e um banco por serviço
 
 - **Status:** Aceito

@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # ADR-0010: Schema com Flyway e testes contra PostgreSQL real
 
 - **Status:** Aceito

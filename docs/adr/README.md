@@ -1,4 +1,3 @@
-<!-- RASCUNHO: reescrever com as suas palavras antes de commitar -->
 # Registros de decisão de arquitetura (ADRs)
 
 Cada arquivo registra uma decisão importante do Matilha: o problema, o que foi decidido, as alternativas descartadas e o preço da escolha.
@@ -15,6 +14,8 @@ Cada arquivo registra uma decisão importante do Matilha: o problema, o que foi 
 | [0008](0008-transactional-outbox.md) | Transactional Outbox para publicar eventos |
 | [0009](0009-codigo-duplicado-sem-biblioteca-comum.md) | Código transversal duplicado em vez de biblioteca compartilhada |
 | [0010](0010-flyway-e-testes-com-postgres-real.md) | Schema com Flyway e testes contra PostgreSQL real |
+| [0011](0011-consumidor-idempotente-e-dlt.md) | Consumidor idempotente e Dead Letter Topic |
+
 
 ## Formato
 
