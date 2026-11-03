@@ -24,7 +24,7 @@ import org.springframework.kafka.support.KafkaHeaders;
 
 import com.matilha.notification.TestcontainersConfiguration;
 import com.matilha.notification.config.KafkaConfig;
-import com.matilha.notification.dto.TransferEventMessage;
+import com.matilha.notification.dto.TransferEventMessageDto;
 import com.matilha.notification.entity.Notification;
 import com.matilha.notification.repository.NotificationRepository;
 import com.matilha.notification.repository.ProcessedEventRepository;
@@ -85,7 +85,7 @@ class TransferEventDeadLetterTest {
     @Test
     void shouldSendNewerVersionToDlt() {
         UUID eventId = UUID.randomUUID();
-        String payload = json(eventId, TransferEventMessage.COMPLETED, 2, UUID.randomUUID(), null);
+        String payload = json(eventId, TransferEventMessageDto.COMPLETED, 2, UUID.randomUUID(), null);
 
         send(payload);
 
@@ -107,7 +107,7 @@ class TransferEventDeadLetterTest {
     @Test
     void shouldSendEventWithoutSourceAccountToDlt() {
         UUID transferId = UUID.randomUUID();
-        String payload = json(UUID.randomUUID(), TransferEventMessage.COMPLETED, 1, transferId, null)
+        String payload = json(UUID.randomUUID(), TransferEventMessageDto.COMPLETED, 1, transferId, null)
                 .replace("\"sourceAccountNumber\":\"" + SOURCE + "\"", "\"sourceAccountNumber\":\"\"");
 
         send(payload);
@@ -123,7 +123,7 @@ class TransferEventDeadLetterTest {
         UUID transferId = UUID.randomUUID();
 
         send(poison);
-        send(json(UUID.randomUUID(), TransferEventMessage.COMPLETED, 1, transferId, null));
+        send(json(UUID.randomUUID(), TransferEventMessageDto.COMPLETED, 1, transferId, null));
 
         awaitInDlt(poison);
         await().atMost(TIMEOUT).untilAsserted(() -> assertThat(notificationsOf(transferId)).hasSize(2));

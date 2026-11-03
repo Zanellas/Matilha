@@ -1,0 +1,175 @@
+package com.matilha.notification.controller;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import com.matilha.notification.config.PageableConfig;
+import com.matilha.notification.dto.NotificationResponseDto;
+import com.matilha.notification.entity.FailureCode;
+import com.matilha.notification.entity.NotificationType;
+import com.matilha.notification.service.NotificationService;
+
+/** O @WebMvcTest não carrega classes @Configuration; o PageableConfig entra pelo @Import para valer a ordem padrão. */
+@WebMvcTest(NotificationController.class)
+@Import(PageableConfig.class)
+class NotificationControllerTest {
+
+    private static final String ACCOUNT = "10001";
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private NotificationService notificationService;
+
+    private static NotificationResponseDto sent() {
+        return new NotificationResponseDto(UUID.randomUUID(), UUID.randomUUID(), ACCOUNT,
+                NotificationType.TRANSFER_SENT, "Você enviou 250.50 para a conta 10002", null,
+                Instant.parse("2026-11-02T12:00:00Z"));
+    }
+
+    private static NotificationResponseDto failed() {
+        return new NotificationResponseDto(UUID.randomUUID(), UUID.randomUUID(), ACCOUNT,
+                NotificationType.TRANSFER_FAILED, "Sua transferência de 99.90 para a conta 10002 falhou",
+                FailureCode.INSUFFICIENT_BALANCE, Instant.parse("2026-11-02T11:00:00Z"));
+    }
+
+    @Test
+    void shouldReturnPagedNotifications() throws Exception {
+        Pageable pageable = PageRequest.of(0, 2);
+        when(notificationService.findByAccount(eq(ACCOUNT), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(sent(), failed()), pageable, 5));
+
+        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT).param("page", "0").param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].accountNumber").value(ACCOUNT))
+                .andExpect(jsonPath("$.content[0].type").value("TRANSFER_SENT"))
+                .andExpect(jsonPath("$.content[0].failureCode").doesNotExist())
+                .andExpect(jsonPath("$.content[0].createdAt").value("2026-11-02T12:00:00Z"))
+                .andExpect(jsonPath("$.content[1].type").value("TRANSFER_FAILED"))
+                .andExpect(jsonPath("$.content[1].failureCode").value("INSUFFICIENT_BALANCE"))
+                .andExpect(jsonPath("$.page.size").value(2))
+                .andExpect(jsonPath("$.page.number").value(0))
+                .andExpect(jsonPath("$.page.totalElements").value(5))
+                .andExpect(jsonPath("$.page.totalPages").value(3));
+    }
+
+    /** A API devolve o DTO, não a entidade: o eventId é detalhe interno da idempotência. */
+    @Test
+    void shouldNotExposeEventId() throws Exception {
+        when(notificationService.findByAccount(anyString(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(sent())));
+
+        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].eventId").doesNotExist());
+    }
+
+    @Test
+    void shouldPassAccountAndPaginationToService() throws Exception {
+        when(notificationService.findByAccount(anyString(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT).param("page", "2").param("size", "5"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(notificationService).findByAccount(eq(ACCOUNT), captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(2);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(5);
+    }
+
+    /** Sem parâmetros de paginação vale o PageableConfig: primeira página, 20 itens, mais recente primeiro. */
+    @Test
+    void shouldUseNewestFirstByDefault() throws Exception {
+        when(notificationService.findByAccount(anyString(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(notificationService).findByAccount(eq(ACCOUNT), captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isZero();
+        assertThat(captor.getValue().getPageSize()).isEqualTo(20);
+        assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+    }
+
+    /** Pedindo só página e tamanho, a ordem padrão continua valendo. */
+    @Test
+    void shouldKeepDefaultSortWhenOnlyPageAndSizeAreGiven() throws Exception {
+        when(notificationService.findByAccount(anyString(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT).param("page", "1").param("size", "5"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(notificationService).findByAccount(eq(ACCOUNT), captor.capture());
+        assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+    }
+
+    /** O notification não conhece as contas: conta sem notificações é uma página vazia, não 404. */
+    @Test
+    void shouldReturnEmptyPageForAccountWithoutNotifications() throws Exception {
+        when(notificationService.findByAccount(anyString(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/notifications").param("accountNumber", "99999"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(0))
+                .andExpect(jsonPath("$.page.totalElements").value(0));
+    }
+
+    @Test
+    void shouldReturnProblemDetailWhenAccountNumberIsMissing() throws Exception {
+        mockMvc.perform(get("/notifications"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.detail").value(containsString("accountNumber")));
+
+        verify(notificationService, never()).findByAccount(anyString(), any(Pageable.class));
+    }
+
+    @Test
+    void shouldReturnProblemDetailWithoutInternalsOnUnexpectedError() throws Exception {
+        when(notificationService.findByAccount(anyString(), any(Pageable.class)))
+                .thenThrow(new IllegalStateException("connection to db-notification refused"));
+
+        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(500))
+                .andExpect(jsonPath("$.detail").value("An unexpected error occurred"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("db-notification"))));
+    }
+}

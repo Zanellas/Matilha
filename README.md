@@ -15,23 +15,26 @@ flowchart LR
     tdb[("PostgreSQL<br/>transfer")]
     adb[("PostgreSQL<br/>account")]
     kafka{{"Kafka"}}
-    notification["matilha-notification<br/>:8083 (esqueleto)"]
+    notification["matilha-notification<br/>:8083"]
+    ndb[("PostgreSQL<br/>notification")]
 
     client -->|"POST /transfers"| transfer
     client -->|"/accounts"| account
+    client -->|"GET /notifications"| notification
     payments -.->|"POST /internal/deposits<br/>(simulado)"| account
     transfer -->|"POST /internal/transfers<br/>(REST, idempotente)"| account
     transfer --- tdb
     account --- adb
+    notification --- ndb
     transfer -->|"eventos via outbox"| kafka
-    kafka -.->|"consumo<br/>(em andamento)"| notification
+    kafka -->|"consumo idempotente<br/>(DLT para mensagens inválidas)"| notification
 ```
 
 | Serviço | Responsabilidade | Status |
 |---|---|---|
 | [matilha-account](matilha-account/) | Contas, saldo e movimentações. É o único serviço que altera saldos. | ✅ Pronto |
 | [matilha-transfer](matilha-transfer/) | Recebe pedidos de transferência, pede ao account para mover o dinheiro, guarda o resultado e publica o evento | ✅ Pronto |
-| [matilha-notification](matilha-notification/) | Consome os eventos de transferência e registra a notificação de cada conta envolvida | 🚧 Esqueleto |
+| [matilha-notification](matilha-notification/) | Consome os eventos de transferência, registra a notificação de cada conta envolvida e permite consultá-las | ✅ Pronto |
 | matilha-gateway | Porta de entrada da API e roteamento | 🚧 Planejado |
 
 ## Como rodar
@@ -41,7 +44,8 @@ Pré-requisito: Docker.
 ```bash
 cp matilha-account/.env.example matilha-account/.env
 cp matilha-transfer/.env.example matilha-transfer/.env
-# edite os dois .env e defina usuário e senha dos bancos
+cp matilha-notification/.env.example matilha-notification/.env
+# edite os três .env e defina usuário e senha dos bancos
 
 docker compose up --build
 ```
@@ -50,6 +54,7 @@ docker compose up --build
 |---|---|
 | matilha-account (Swagger) | http://localhost:8081/swagger-ui.html |
 | matilha-transfer (Swagger) | http://localhost:8082/swagger-ui.html |
+| matilha-notification (Swagger) | http://localhost:8083/swagger-ui.html |
 | Kafka UI | http://localhost:8090 |
 
 Os serviços sobem no perfil `dev`, que carrega contas de exemplo (`10001` a `10005`). Para testar uma transferência:
@@ -62,6 +67,13 @@ curl -i -X POST http://localhost:8082/transfers \
 ```
 
 Rode o mesmo comando de novo: a resposta é a mesma e o dinheiro só sai da conta uma vez.
+
+Em seguida, veja as notificações geradas pelo evento da transferência, uma para cada conta:
+
+```bash
+curl "http://localhost:8083/notifications?accountNumber=10001"   # TRANSFER_SENT
+curl "http://localhost:8083/notifications?accountNumber=10002"   # TRANSFER_RECEIVED
+```
 
 O `compose.yaml` da raiz inclui a infraestrutura (`infra/compose.yaml`: Kafka e Kafka UI) e o compose de cada serviço. Para subir só uma parte, rode na raiz com o nome dos serviços, por exemplo `docker compose up -d transfer-db kafka`.
 
@@ -76,13 +88,14 @@ Outros modos de rodar, endpoints, regras e testes estão no README de cada servi
 - **Timeout não é falha.** Se o account não responde, a transferência fica `PENDING`, não `FAILED`, porque o dinheiro pode ter sido movido e a resposta ter se perdido. Um reconciliador agendado reenvia as pendentes. Ele usa `FOR UPDATE SKIP LOCKED` com uma reserva com prazo, então funciona com várias réplicas.
 - **Sem transação aberta durante chamada de rede.** O transfer grava `PENDING`, chama o account fora de transação e grava o resultado numa segunda transação.
 - **Eventos pelo transactional outbox.** O evento é gravado na tabela `outbox_events` na mesma transação que muda o status da transferência, então não existe transferência terminada sem evento, nem evento de algo que não foi gravado. Um publicador agendado envia ao Kafka e só marca como publicado depois da confirmação do broker. Ele usa o mesmo `SKIP LOCKED` com reserva do reconciliador. A entrega é "pelo menos uma vez", e o consumidor descarta duplicatas pelo `eventId`.
+- **Consumidor idempotente com Dead Letter Topic.** O notification grava o `eventId` em `processed_events` na mesma transação que as notificações, e só confirma o offset no Kafka depois do commit. Um evento repetido é ignorado. Uma mensagem que nunca vai funcionar (JSON inválido, versão ou tipo desconhecido) vai direto para a DLT. Uma falha de infraestrutura, como o banco fora do ar, é repetida sem limite com espera crescente, para não mandar mensagens boas para a DLT.
 - **Concorrência resolvida no banco.** O account trava as contas com `SELECT ... FOR UPDATE`, sempre na mesma ordem, o que evita deadlock. O saldo não negativo é garantido na entidade e numa constraint.
 - **Schema só pelo Flyway.** O Hibernate roda com `ddl-auto: validate`, e os testes sobem um PostgreSQL real com Testcontainers, então testam o mesmo schema de produção.
 - **Erros no formato Problem Details (RFC 9457), com um `code` como contrato.** O account devolve códigos como `INSUFFICIENT_BALANCE`. O transfer converte esses códigos para um enum próprio, grava na transferência e repassa no evento. Nenhum serviço depende do texto em inglês do `detail`, e o detalhe interno de um erro inesperado fica só no log.
 
 ## Stack
 
-Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), PostgreSQL 17, Flyway, Kafka, RestClient, springdoc-openapi, JUnit 5, Mockito, MockMvc, Testcontainers, Docker Compose e GitHub Actions (um workflow por serviço: testes e build da imagem).
+Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), PostgreSQL 17, Flyway, Kafka (Spring Kafka), RestClient, springdoc-openapi, JUnit 5, Mockito, MockMvc, Testcontainers, Awaitility, Docker Compose e GitHub Actions (um workflow por serviço: testes e build da imagem).
 
 ## Roadmap
 
@@ -90,7 +103,7 @@ Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), PostgreSQL 1
 - [x] matilha-transfer: orquestração síncrona com idempotência e reconciliador de pendentes
 - [x] Códigos de erro no Problem Details, propagados do account até o evento
 - [x] Eventos de transferência no Kafka com transactional outbox
-- [ ] matilha-notification consumindo os eventos (registro idempotente, sem envio real)
+- [x] matilha-notification consumindo os eventos (registro idempotente, sem envio real)
 - [ ] matilha-gateway como porta de entrada
 - [ ] Autenticação com Keycloak
 - [ ] Deploy no Kubernetes

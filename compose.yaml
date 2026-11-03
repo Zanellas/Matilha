@@ -4,5 +4,5 @@ include:
   - infra/compose.yaml
   - matilha-account/compose.yaml
   - matilha-transfer/compose.yaml
-
+  - matilha-notification/compose.yaml
 

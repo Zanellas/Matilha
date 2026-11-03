@@ -14,7 +14,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import com.matilha.notification.dto.TransferEventMessage;
+import com.matilha.notification.dto.TransferEventMessageDto;
 import com.matilha.notification.entity.FailureCode;
 import com.matilha.notification.entity.Notification;
 import com.matilha.notification.entity.NotificationType;
@@ -28,8 +28,8 @@ class NotificationFactoryTest {
     private static final String TARGET = "10002";
 
     /** O failureCode chega como texto, do jeito que está no JSON. */
-    private static TransferEventMessage event(String type, int version, String failureCode) {
-        return new TransferEventMessage(EVENT_ID, type, version, Instant.now(), TRANSFER_ID,
+    private static TransferEventMessageDto event(String type, int version, String failureCode) {
+        return new TransferEventMessageDto(EVENT_ID, type, version, Instant.now(), TRANSFER_ID,
                 SOURCE, TARGET, "250.50", failureCode);
     }
 
@@ -39,7 +39,7 @@ class NotificationFactoryTest {
         @Test
         void shouldCreateSentForSourceAndReceivedForTarget() {
             List<Notification> notifications = NotificationFactory.from(
-                    event(TransferEventMessage.COMPLETED, 1, null));
+                    event(TransferEventMessageDto.COMPLETED, 1, null));
 
             assertThat(notifications)
                     .extracting(Notification::getAccountNumber, Notification::getType, Notification::getFailureCode)
@@ -51,7 +51,7 @@ class NotificationFactoryTest {
         @Test
         void shouldKeepEventAndTransferIdsInEveryNotification() {
             List<Notification> notifications = NotificationFactory.from(
-                    event(TransferEventMessage.COMPLETED, 1, null));
+                    event(TransferEventMessageDto.COMPLETED, 1, null));
 
             assertThat(notifications).allSatisfy(notification -> {
                 assertThat(notification.getEventId()).isEqualTo(EVENT_ID);
@@ -67,7 +67,7 @@ class NotificationFactoryTest {
         @Test
         void shouldCreateOneFailedNotificationForSourceWithCode() {
             List<Notification> notifications = NotificationFactory.from(
-                    event(TransferEventMessage.FAILED, 1, "INSUFFICIENT_BALANCE"));
+                    event(TransferEventMessageDto.FAILED, 1, "INSUFFICIENT_BALANCE"));
 
             assertThat(notifications)
                     .singleElement()
@@ -89,7 +89,7 @@ class NotificationFactoryTest {
         @ValueSource(strings = { "ACCOUNT_BLOCKED", "", "insufficient_balance" })
         void shouldUseGenericCodeWhenCodeIsUnknownOrMissing(String failureCode) {
             List<Notification> notifications = NotificationFactory.from(
-                    event(TransferEventMessage.FAILED, 1, failureCode));
+                    event(TransferEventMessageDto.FAILED, 1, failureCode));
 
             assertThat(notifications)
                     .singleElement()
@@ -103,7 +103,7 @@ class NotificationFactoryTest {
         @Test
         void shouldIgnoreCodeInCompletedEvent() {
             List<Notification> notifications = NotificationFactory.from(
-                    event(TransferEventMessage.COMPLETED, 1, "INSUFFICIENT_BALANCE"));
+                    event(TransferEventMessageDto.COMPLETED, 1, "INSUFFICIENT_BALANCE"));
 
             assertThat(notifications)
                     .extracting(Notification::getFailureCode)
@@ -116,7 +116,7 @@ class NotificationFactoryTest {
 
         @Test
         void shouldRejectNewerVersion() {
-            TransferEventMessage event = event(TransferEventMessage.COMPLETED, 2, null);
+            TransferEventMessageDto event = event(TransferEventMessageDto.COMPLETED, 2, null);
 
             assertThatThrownBy(() -> NotificationFactory.from(event))
                     .isInstanceOf(UnsupportedEventException.class)
@@ -127,7 +127,7 @@ class NotificationFactoryTest {
         @NullSource
         @ValueSource(strings = { "", "TransferCreated", "transferCompleted" })
         void shouldRejectUnknownType(String type) {
-            TransferEventMessage event = event(type, 1, null);
+            TransferEventMessageDto event = event(type, 1, null);
 
             assertThatThrownBy(() -> NotificationFactory.from(event))
                     .isInstanceOf(UnsupportedEventException.class);

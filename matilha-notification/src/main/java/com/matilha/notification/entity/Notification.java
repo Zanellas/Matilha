@@ -27,6 +27,8 @@ import lombok.ToString;
 @Table(name = "notifications")
 public class Notification {
 
+    private static final int ACCOUNT_NUMBER_LENGTH = 5;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -64,10 +66,18 @@ public class Notification {
         }
         this.eventId = eventId;
         this.transferId = transferId;
-        this.accountNumber = requiredNotBlank(accountNumber, "accountNumber");
+        this.accountNumber = requireAccountNumber(accountNumber);
         this.type = type;
         this.message = requiredNotBlank(message, "message");
         this.failureCode = failureCode;
+    }
+
+    private static String requireAccountNumber(String value) {
+        String account = requiredNotBlank(value, "accountNumber");
+        if (account.length() != ACCOUNT_NUMBER_LENGTH) {
+            throw new BusinessException("accountNumber must have " + ACCOUNT_NUMBER_LENGTH + " characters");
+        }
+        return account;
     }
 
     private static String requiredNotBlank(String value, String field) {

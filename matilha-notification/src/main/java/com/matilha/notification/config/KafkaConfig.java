@@ -8,7 +8,7 @@ import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
-import org.springframework.util.backoff.FixedBackOff;
+import org.springframework.util.backoff.ExponentialBackOff;
 
 import com.matilha.notification.exception.BusinessException;
 import com.matilha.notification.exception.UnsupportedEventException;
@@ -31,7 +31,9 @@ public class KafkaConfig {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate,
                 (record, ex) -> new TopicPartition(TRANSFER_EVENTS_DLT, record.partition()));
 
-        DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 2L));
+        ExponentialBackOff backOff = new ExponentialBackOff(1000L, 2.0);
+        backOff.setMaxInterval(30_000L);
+        DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
         handler.addNotRetryableExceptions(
                 JacksonException.class,
                 UnsupportedEventException.class,
