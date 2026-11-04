@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: matilha-gateway
+
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+  web:
+    error:
+      include-message: never
+      include-binding-errors: never
+      include-stacktrace: never
+      include-exception: false
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: matilha-gateway
+    description: API gateway
+
+matilha:
+  account:
+    base-url: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
+  transfer:
+    base-url: ${TRANSFER_SERVICE_URL:http://localhost:8082}
+  notification:
+    base-url: ${NOTIFICATION_SERVICE_URL:http://localhost:8083}

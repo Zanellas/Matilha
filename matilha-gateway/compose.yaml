@@ -1,0 +1,13 @@
+name: matilha
+
+services:
+  gateway:
+    build: .
+    container_name: matilha-gateway
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      ACCOUNT_SERVICE_URL: http://account:8081
+      TRANSFER_SERVICE_URL: http://transfer:8082
+      NOTIFICATION_SERVICE_URL: http://notification:8083
