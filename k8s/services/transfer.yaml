@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: transfer-config
+data:
+  TRANSFER_DB_URL: jdbc:postgresql://transfer-db:5432/matilha_transfer
+  ACCOUNT_SERVICE_URL: http://account:8081
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transfer
+spec:
+  selector:
+    app: transfer
+  ports:
+    - port: 8082
+      targetPort: 8082
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transfer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: transfer
+  template:
+    metadata:
+      labels:
+        app: transfer
+    spec:
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: transfer
+          image: matilha-transfer:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+          envFrom:
+            - configMapRef:
+                name: transfer-config
+          env:
+            - name: TRANSFER_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: transfer-db-secret
+                  key: POSTGRES_USER
+            - name: TRANSFER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: transfer-db-secret
+                  key: POSTGRES_PASSWORD
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8082
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8082
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8082
+            periodSeconds: 5
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests:
+              memory: 384Mi
+            limits:
+              memory: 768Mi
