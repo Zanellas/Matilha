@@ -48,6 +48,8 @@ O `docker compose` roda **na raiz**, e não dentro de `matilha-notification/`. O
 
 O serviço sobe em `http://localhost:8083`, com o banco na porta `5434`. As duas portas ficam ligadas só a `127.0.0.1`.
 
+A 8083 serve para depuração e para o Swagger. A entrada oficial da API é o [matilha-gateway](../matilha-gateway/), em `http://localhost:8080`, que repassa `/notifications/**` para cá.
+
 Para gerar notificações, o transfer (e o account) precisam estar rodando. Sem eles, o notification sobe e fica esperando eventos no tópico.
 
 | Variável | Padrão | Uso |
