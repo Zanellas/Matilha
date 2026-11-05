@@ -10,6 +10,7 @@ Cada serviço vive na sua própria pasta deste monorepo, com banco, build, teste
 flowchart LR
     client([Cliente])
     payments([Sistema de pagamentos<br/>ex.: PIX recebido])
+    gateway["matilha-gateway<br/>:8080"]
     transfer["matilha-transfer<br/>:8082"]
     account["matilha-account<br/>:8081"]
     tdb[("PostgreSQL<br/>transfer")]
@@ -18,9 +19,10 @@ flowchart LR
     notification["matilha-notification<br/>:8083"]
     ndb[("PostgreSQL<br/>notification")]
 
-    client -->|"POST /transfers"| transfer
-    client -->|"/accounts"| account
-    client -->|"GET /notifications"| notification
+    client -->|"/accounts, /transfers, /notifications"| gateway
+    gateway -->|"/accounts/**"| account
+    gateway -->|"/transfers/**"| transfer
+    gateway -->|"/notifications/**"| notification
     payments -.->|"POST /internal/deposits<br/>(simulado)"| account
     transfer -->|"POST /internal/transfers<br/>(REST, idempotente)"| account
     transfer --- tdb
@@ -30,12 +32,14 @@ flowchart LR
     kafka -->|"consumo idempotente<br/>(DLT para mensagens inválidas)"| notification
 ```
 
+O cliente só fala com o gateway. Ele conhece três rotas, e qualquer outro caminho, inclusive `/internal/**`, recebe `404`. O transfer chama o account por dentro, e o depósito chega direto no account, como faria um sistema de pagamentos na rede interna.
+
 | Serviço | Responsabilidade | Status |
 |---|---|---|
+| [matilha-gateway](matilha-gateway/) | Porta de entrada da API: roteia as três rotas públicas e bloqueia o resto | ✅ Pronto |
 | [matilha-account](matilha-account/) | Contas, saldo e movimentações. É o único serviço que altera saldos. | ✅ Pronto |
 | [matilha-transfer](matilha-transfer/) | Recebe pedidos de transferência, pede ao account para mover o dinheiro, guarda o resultado e publica o evento | ✅ Pronto |
 | [matilha-notification](matilha-notification/) | Consome os eventos de transferência, registra a notificação de cada conta envolvida e permite consultá-las | ✅ Pronto |
-| matilha-gateway | Porta de entrada da API e roteamento | 🚧 Planejado |
 
 ## Como rodar
 
@@ -50,8 +54,11 @@ cp matilha-notification/.env.example matilha-notification/.env
 docker compose up --build
 ```
 
+**A porta oficial é a 8080, do gateway.** As portas 8081, 8082 e 8083 continuam publicadas em `127.0.0.1` para depuração e para o Swagger de cada serviço, mas não são a entrada da API. No Kubernetes, só o gateway vai ficar exposto.
+
 | O quê | Endereço |
 |---|---|
+| **matilha-gateway (API)** | **http://localhost:8080** |
 | matilha-account (Swagger) | http://localhost:8081/swagger-ui.html |
 | matilha-transfer (Swagger) | http://localhost:8082/swagger-ui.html |
 | matilha-notification (Swagger) | http://localhost:8083/swagger-ui.html |
@@ -60,7 +67,7 @@ docker compose up --build
 Os serviços sobem no perfil `dev`, que carrega contas de exemplo (`10001` a `10005`). Para testar uma transferência:
 
 ```bash
-curl -i -X POST http://localhost:8082/transfers \
+curl -i -X POST http://localhost:8080/transfers \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: 3f1c2a9e-7b4d-4c1a-9e2f-5a6b7c8d9e01" \
   -d '{"sourceAccountNumber": "10001", "targetAccountNumber": "10002", "amount": 250.50}'
@@ -71,16 +78,23 @@ Rode o mesmo comando de novo: a resposta é a mesma e o dinheiro só sai da cont
 Em seguida, veja as notificações geradas pelo evento da transferência, uma para cada conta:
 
 ```bash
-curl "http://localhost:8083/notifications?accountNumber=10001"   # TRANSFER_SENT
-curl "http://localhost:8083/notifications?accountNumber=10002"   # TRANSFER_RECEIVED
+curl "http://localhost:8080/notifications?accountNumber=10001"   # TRANSFER_SENT
+curl "http://localhost:8080/notifications?accountNumber=10002"   # TRANSFER_RECEIVED
+```
+
+E veja o gateway bloqueando um endpoint interno, sem que a requisição chegue ao account:
+
+```bash
+curl -i -X POST http://localhost:8080/internal/deposits   # 404, code ROUTE_NOT_FOUND
 ```
 
 O `compose.yaml` da raiz inclui a infraestrutura (`infra/compose.yaml`: Kafka e Kafka UI) e o compose de cada serviço. Para subir só uma parte, rode na raiz com o nome dos serviços, por exemplo `docker compose up -d transfer-db kafka`.
 
-Outros modos de rodar, endpoints, regras e testes estão no README de cada serviço. A [collection do Postman](postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro.
+Outros modos de rodar, endpoints, regras e testes estão no README de cada serviço. A [collection do Postman](postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro pelo gateway: depósito (direto no account, porque é interno), transferência e notificações.
 
 ## Decisões principais
 
+- **Gateway com lista de liberação.** O matilha-gateway (Spring Cloud Gateway Server Web MVC, o mesmo modelo servlet dos outros serviços) conhece só `/accounts`, `/transfers` e `/notifications`. Não existe regra que bloqueia `/internal/**`: o bloqueio é a ausência de rota. Assim, um endpoint interno novo, com qualquer prefixo, nasce protegido. Serviço fora do ar vira `503` em Problem Details, e o health do gateway não depende dos serviços, para a queda de um não derrubar as rotas dos outros. Detalhes no [ADR-0012](docs/adr/0012-gateway-webmvc-e-rotas-liberadas.md).
 - **Um banco por serviço.** O transfer nunca toca no banco do account. Ele pede a operação pela API interna, e o account é o único dono do saldo.
 - **Idempotência ponta a ponta.** O cliente manda um `Idempotency-Key`. O transfer repassa o id da transferência ao account, que também é idempotente. Um reenvio, seja do cliente ou do próprio sistema, nunca move o dinheiro duas vezes.
 - **Depósito é entrada externa.** O `/internal/deposits` representa dinheiro vindo de fora, como um PIX recebido, e é chamado pelo sistema de pagamentos com o ID da operação dele. Como o Matilha não tem esse sistema, ele é simulado por chamada direta. Não é uma operação administrativa e não passa pelo gateway.
@@ -95,7 +109,7 @@ Outros modos de rodar, endpoints, regras e testes estão no README de cada servi
 
 ## Stack
 
-Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), PostgreSQL 17, Flyway, Kafka (Spring Kafka), RestClient, springdoc-openapi, JUnit 5, Mockito, MockMvc, Testcontainers, Awaitility, Docker Compose e GitHub Actions (um workflow por serviço: testes e build da imagem).
+Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), Spring Cloud Gateway Server Web MVC (2025.1, Oakwood), PostgreSQL 17, Flyway, Kafka (Spring Kafka), RestClient, springdoc-openapi, JUnit 5, Mockito, MockMvc, Testcontainers, Awaitility, Docker Compose e GitHub Actions (um workflow por serviço: testes e build da imagem).
 
 ## Roadmap
 
@@ -104,6 +118,6 @@ Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), PostgreSQL 1
 - [x] Códigos de erro no Problem Details, propagados do account até o evento
 - [x] Eventos de transferência no Kafka com transactional outbox
 - [x] matilha-notification consumindo os eventos (registro idempotente, sem envio real)
-- [ ] matilha-gateway como porta de entrada
+- [x] matilha-gateway como porta de entrada, com rotas por lista de liberação
 - [ ] Autenticação com Keycloak
 - [ ] Deploy no Kubernetes
