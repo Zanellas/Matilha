@@ -119,5 +119,5 @@ Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), Spring Cloud
 - [x] Eventos de transferência no Kafka com transactional outbox
 - [x] matilha-notification consumindo os eventos (registro idempotente, sem envio real)
 - [x] matilha-gateway como porta de entrada, com rotas por lista de liberação
-- [ ] Autenticação com Keycloak
-- [ ] Deploy no Kubernetes
+- [ ] Deploy no Kubernetes, com só o gateway exposto
+- [ ] Autenticação com Keycloak no gateway
