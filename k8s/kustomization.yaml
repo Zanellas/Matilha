@@ -11,3 +11,6 @@ resources:
   - infra/notification-db.yaml
   - infra/kafka.yaml
   - services/account.yaml
+  - services/transfer.yaml
+  - services/notification.yaml
+  - services/gateway.yaml
