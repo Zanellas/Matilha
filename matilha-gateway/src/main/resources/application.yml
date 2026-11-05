@@ -12,6 +12,29 @@ spring:
       include-stacktrace: never
       include-exception: false
 
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          routes:
+            - id: account
+              uri: ${matilha.account.base-url}
+              predicates:
+                - Path=/accounts/**
+            - id: transfer
+              uri: ${matilha.transfer.base-url}
+              predicates:
+                - Path=/transfers/**
+            - id: notification
+              uri: ${matilha.notification.base-url}
+              predicates:
+                - Path=/notifications/**
+  http:
+    clients:
+      connect-timeout: 2s
+      read-timeout: 10s
+
+
 server:
   port: 8080
   shutdown: graceful
