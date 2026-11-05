@@ -1,14 +1,16 @@
 {
   "info": {
     "name": "Matilha - Transfer e Notification",
-    "description": "Roteiro de testes do fluxo inteiro: matilha-transfer, matilha-account e matilha-notification, rodando localmente com o perfil dev (docker compose up --build na raiz).\n\nRode as pastas 1 a 6 em ordem com o Collection Runner. A pasta 7 é manual: pare o account antes de rodar.\n\nAs requisições usam as contas de exemplo do perfil dev (10001 a 10005).\n\nAs recusas são conferidas pelo code do Problem Details (INSUFFICIENT_BALANCE, ACCOUNT_NOT_FOUND, ACCOUNT_INACTIVE), que é o contrato. O detail é texto e pode mudar.\n\nCada transferência COMPLETED ou FAILED gera um evento no tópico matilha.transfer.events, e o notification transforma o evento em notificações. A pasta 6 confere essas notificações pelo transferId das pastas 2 e 3. Para ver os eventos, abra a Kafka UI (http://localhost:8090).",
+    "description": "Roteiro de testes do fluxo inteiro: matilha-transfer, matilha-account e matilha-notification, rodando localmente com o perfil dev (docker compose up --build na raiz).\n\nAs chamadas públicas passam pelo matilha-gateway ({{baseUrl}}, porta 8080), que é a porta de entrada oficial. Ficam direto no serviço só o que é interno (POST /internal/transfers no account) e os health checks dos serviços, porque o gateway não tem rota para /internal/** nem para o /actuator dos serviços.\n\nRode as pastas 0 a 6 em ordem com o Collection Runner. A pasta 7 é manual: pare o account antes de rodar.\n\nAs requisições usam as contas de exemplo do perfil dev (10001 a 10005).\n\nAs recusas são conferidas pelo code do Problem Details (INSUFFICIENT_BALANCE, ACCOUNT_NOT_FOUND, ACCOUNT_INACTIVE), que é o contrato. O detail é texto e pode mudar.\n\nCada transferência COMPLETED ou FAILED gera um evento no tópico matilha.transfer.events, e o notification transforma o evento em notificações. A pasta 6 confere essas notificações pelo transferId das pastas 2 e 3. Para ver os eventos, abra a Kafka UI (http://localhost:8090).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
     { "key": "accountUrl", "value": "http://localhost:8081" },
     { "key": "transferUrl", "value": "http://localhost:8082" },
     { "key": "notificationUrl", "value": "http://localhost:8083" },
     { "key": "amount", "value": "100.00" },
+    { "key": "depositId", "value": "" },
     { "key": "successKey", "value": "" },
     { "key": "transferId", "value": "" },
     { "key": "sourceBalanceBefore", "value": "" },
@@ -18,8 +20,123 @@
   ],
   "item": [
     {
+      "name": "0. Gateway",
+      "description": "O gateway é a única porta de entrada. Só /accounts, /transfers e /notifications têm rota; o resto, inclusive /internal/**, recebe 404 do próprio gateway e nunca chega ao serviço (ADR-0012).",
+      "item": [
+        {
+          "name": "Health do gateway",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Gateway no ar', () => pm.response.to.have.status(200));",
+                  "pm.test('Status UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        },
+        {
+          "name": "Depósito pelo gateway é bloqueado (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 do próprio gateway: não existe rota para /internal/deposits', () => pm.response.to.have.status(404));",
+                  "pm.test('Problem Details com code ROUTE_NOT_FOUND', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.code).to.eql('ROUTE_NOT_FOUND');",
+                  "    pm.expect(body.instance).to.eql('/internal/deposits');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"depositId\": \"{{$guid}}\",\n  \"accountNumber\": \"10001\",\n  \"amount\": 1000.00\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/internal/deposits",
+              "host": ["{{baseUrl}}"],
+              "path": ["internal", "deposits"]
+            }
+          }
+        },
+        {
+          "name": "Transferência interna pelo gateway é bloqueada (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 do próprio gateway: não existe rota para /internal/transfers', () => pm.response.to.have.status(404));",
+                  "pm.test('Problem Details com code ROUTE_NOT_FOUND', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.code).to.eql('ROUTE_NOT_FOUND');",
+                  "    pm.expect(body.instance).to.eql('/internal/transfers');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"transferId\": \"{{$guid}}\",\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 1000.00\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/internal/transfers",
+              "host": ["{{baseUrl}}"],
+              "path": ["internal", "transfers"]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "1. Preparação",
       "item": [
+        {
+          "name": "Health do account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('account está UP', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{accountUrl}}/actuator/health",
+              "host": ["{{accountUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        },
         {
           "name": "Health do transfer",
           "event": [
@@ -71,6 +188,46 @@
           }
         },
         {
+          "name": "Depósito na 10001 (direto no account, é interno)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('depositId', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('depósito aceito', () => pm.response.to.have.status(200));",
+                  "pm.test('crédito na 10001 com o depositId enviado', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.depositId).to.eql(pm.collectionVariables.get('depositId'));",
+                  "    pm.expect(body.accountNumber).to.eql('10001');",
+                  "    pm.expect(Number(body.amount)).to.eql(1000);",
+                  "    pm.expect(body.balanceAfter).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"depositId\": \"{{depositId}}\",\n  \"accountNumber\": \"10001\",\n  \"amount\": 1000.00\n}" },
+            "url": {
+              "raw": "{{accountUrl}}/internal/deposits",
+              "host": ["{{accountUrl}}"],
+              "path": ["internal", "deposits"]
+            }
+          }
+        },
+        {
           "name": "Saldo inicial da 10001 (origem)",
           "event": [
             {
@@ -87,8 +244,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{accountUrl}}/accounts/10001",
-              "host": ["{{accountUrl}}"],
+              "raw": "{{baseUrl}}/accounts/10001",
+              "host": ["{{baseUrl}}"],
               "path": ["accounts", "10001"]
             }
           }
@@ -110,8 +267,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{accountUrl}}/accounts/10002",
-              "host": ["{{accountUrl}}"],
+              "raw": "{{baseUrl}}/accounts/10002",
+              "host": ["{{baseUrl}}"],
               "path": ["accounts", "10002"]
             }
           }
@@ -166,8 +323,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -201,8 +358,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -235,8 +392,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -269,8 +426,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -296,8 +453,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{accountUrl}}/accounts/10001",
-              "host": ["{{accountUrl}}"],
+              "raw": "{{baseUrl}}/accounts/10001",
+              "host": ["{{baseUrl}}"],
               "path": ["accounts", "10001"]
             }
           }
@@ -323,8 +480,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{accountUrl}}/accounts/10002",
-              "host": ["{{accountUrl}}"],
+              "raw": "{{baseUrl}}/accounts/10002",
+              "host": ["{{baseUrl}}"],
               "path": ["accounts", "10002"]
             }
           }
@@ -369,7 +526,7 @@
           }
         },
         {
-          "name": "Account direto: conta inexistente traz o code (404)",
+          "name": "Conta inexistente traz o code (404)",
           "event": [
             {
               "listen": "test",
@@ -386,8 +543,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{accountUrl}}/accounts/10009",
-              "host": ["{{accountUrl}}"],
+              "raw": "{{baseUrl}}/accounts/10009",
+              "host": ["{{baseUrl}}"],
               "path": ["accounts", "10009"]
             }
           }
@@ -426,8 +583,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -467,8 +624,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -506,8 +663,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -545,8 +702,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -578,8 +735,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{transferUrl}}/transfers/{{transferId}}",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers/{{transferId}}",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers", "{{transferId}}"]
             }
           }
@@ -608,8 +765,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{transferUrl}}/transfers/{{failedTransferId}}",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers/{{failedTransferId}}",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers", "{{failedTransferId}}"]
             }
           }
@@ -633,8 +790,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{transferUrl}}/transfers/{{$guid}}",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers/{{$guid}}",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers", "{{$guid}}"]
             }
           }
@@ -655,8 +812,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{transferUrl}}/transfers/abc",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers/abc",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers", "abc"]
             }
           }
@@ -690,8 +847,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -721,8 +878,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -757,8 +914,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -794,8 +951,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -841,8 +998,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=10001&size=100",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=10001&size=100",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "10001" },
@@ -876,8 +1033,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=10002&size=100",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=10002&size=100",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "10002" },
@@ -911,8 +1068,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=10003&size=100",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=10003&size=100",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "10003" },
@@ -941,8 +1098,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=10001&size=100",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=10001&size=100",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "10001" },
@@ -973,8 +1130,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=10001",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=10001",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "10001" }
@@ -1005,8 +1162,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=10001&size=1",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=10001&size=1",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "10001" },
@@ -1032,8 +1189,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=10001&size=500",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=10001&size=500",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "10001" },
@@ -1063,8 +1220,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=99999",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=99999",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "99999" }
@@ -1089,8 +1246,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"]
             }
           }
@@ -1111,8 +1268,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=1000",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=1000",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "1000" }
@@ -1136,8 +1293,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=abcde",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=abcde",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "abcde" }
@@ -1186,8 +1343,8 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": {
-              "raw": "{{transferUrl}}/transfers",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers"]
             }
           }
@@ -1212,8 +1369,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{transferUrl}}/transfers/{{pendingTransferId}}",
-              "host": ["{{transferUrl}}"],
+              "raw": "{{baseUrl}}/transfers/{{pendingTransferId}}",
+              "host": ["{{baseUrl}}"],
               "path": ["transfers", "{{pendingTransferId}}"]
             }
           }
@@ -1241,8 +1398,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{notificationUrl}}/notifications?accountNumber=10001&size=100",
-              "host": ["{{notificationUrl}}"],
+              "raw": "{{baseUrl}}/notifications?accountNumber=10001&size=100",
+              "host": ["{{baseUrl}}"],
               "path": ["notifications"],
               "query": [
                 { "key": "accountNumber", "value": "10001" },
