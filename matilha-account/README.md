@@ -53,6 +53,8 @@ As aspas no `-D...` são necessárias no PowerShell, que quebraria o argumento n
 
 O serviço sobe em `http://localhost:8081`. As duas portas (8081 e 5432) ficam ligadas só a `127.0.0.1`. Use um modo de cada vez, porque os nomes dos containers e as portas são fixos.
 
+A 8081 serve para depuração, para o Swagger e para os endpoints internos. A entrada oficial da API é o [matilha-gateway](../matilha-gateway/), em `http://localhost:8080`, que repassa `/accounts/**` para cá e não deixa passar o `/internal/**`.
+
 ## Perfis
 
 | Perfil | O que muda |
@@ -270,6 +272,8 @@ O Docker precisa estar rodando, porque os testes que sobem a aplicação usam um
 - **Services**: criação de conta, depósito, transferência, idempotência e ordem de lock (com Mockito)
 - **Controllers**: contratos HTTP, validação e respostas de erro (com MockMvc)
 - **Concorrência**: transferências e depósitos simultâneos contra o PostgreSQL, com locks de verdade. O teste confere que o saldo nunca fica negativo, que não há deadlock, que uma operação repetida não move dinheiro duas vezes e que nenhuma atualização se perde.
+
+Para rodar o serviço na IDE sem o compose, use o `main` de `TestAccountApplication` (em `src/test`). Ele sobe a aplicação com o mesmo PostgreSQL dos testes. Sem perfil, o banco começa vazio. Para ter as contas de exemplo e o Swagger, passe `--spring.profiles.active=dev` nos argumentos do programa.
 
 ## CI
 

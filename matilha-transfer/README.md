@@ -42,6 +42,8 @@ O `docker compose` roda **na raiz**, e não dentro de `matilha-transfer/`. O tra
 
 O serviço sobe em `http://localhost:8082`, com o banco na porta `5433` para não conflitar com o do account. As duas portas ficam ligadas só a `127.0.0.1`.
 
+A 8082 serve para depuração e para o Swagger. A entrada oficial da API é o [matilha-gateway](../matilha-gateway/), em `http://localhost:8080`, que repassa `/transfers/**` para cá com os headers intactos: o `Idempotency-Key` chega, e o `Location` volta.
+
 | Variável | Padrão | Uso |
 |---|---|---|
 | `ACCOUNT_SERVICE_URL` | `http://localhost:8081` | Endereço do account. No Docker, o `compose.yaml` aponta para `http://account:8081`. |
@@ -265,7 +267,9 @@ O Docker precisa estar rodando, porque os testes que sobem a aplicação usam um
 
 ### Postman
 
-A collection [postman/matilha-transfer.postman_collection.json](../postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro com os dois serviços rodando no perfil `dev`. Ela inclui sucesso, idempotência (conferindo que o saldo muda uma vez só), recusas, consulta e validação. Rode pelo Collection Runner, sem a pasta 6. Ela é manual: você para o account, cria uma transferência (`202 PENDING`), sobe o account de novo e confere que o reconciliador a marcou `COMPLETED`.
+A collection [postman/matilha-transfer.postman_collection.json](../postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro pelo gateway, com o sistema rodando no perfil `dev`. Ela inclui depósito, sucesso, idempotência (conferindo que o saldo muda uma vez só), recusas, consulta, validação e notificações. Rode as pastas 0 a 6 pelo Collection Runner. A pasta 7 é manual: você para o account, cria uma transferência (`202 PENDING`), sobe o account de novo e confere que o reconciliador a marcou `COMPLETED`.
+
+Para rodar o serviço na IDE sem o banco do compose, use o `main` de `TestTransferApplication` (em `src/test`). Ele sobe a aplicação com o mesmo PostgreSQL dos testes. O account e o Kafka continuam vindo de fora (`docker compose up -d account kafka` na raiz). Sem o account, as transferências ficam `PENDING`. Sem o Kafka, os eventos esperam no outbox.
 
 ## CI
 
