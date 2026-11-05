@@ -10,3 +10,4 @@ resources:
   - infra/notification-db-secret.yaml
   - infra/notification-db.yaml
   - infra/kafka.yaml
+  - services/account.yaml
