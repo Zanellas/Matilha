@@ -19,11 +19,6 @@ spring:
     open-in-view: false
     show-sql: false
 
-  data:
-    web:
-      pageable:
-        serialization-mode: via-dto
-
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
