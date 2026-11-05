@@ -24,6 +24,13 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
+  web:
+    error:
+      include-message: never
+      include-binding-errors: never
+      include-stacktrace: never
+      include-exception: false
+
 server:
   port: 8083
   shutdown: graceful
@@ -38,6 +45,9 @@ management:
       show-details: never
       probes:
         enabled: true
+  info:
+    env:
+      enabled: true
 
 info:
   app:
