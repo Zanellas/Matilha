@@ -4,7 +4,7 @@ Porta de entrada da API do Matilha. Recebe as requisições dos clientes na port
 
 Faz parte do [Matilha](../README.md).
 
-> 🚧 **Em construção.** A estrutura do serviço está pronta. As rotas e o tratamento de erro são as próximas etapas.
+Usa o Spring Cloud Gateway **Server Web MVC** (linha 2025.1.x, Oakwood), e não a versão WebFlux: é o mesmo modelo servlet dos outros três serviços. A escolha está no [ADR-0012](../docs/adr/0012-gateway-webmvc-e-rotas-liberadas.md).
 
 ## Como rodar
 
@@ -33,6 +33,8 @@ O gateway sobe em `http://localhost:8080`, ligado só a `127.0.0.1`. Ele sobe me
 
 O padrão vale para produção: health sem detalhes e erros sem mensagem nem stack trace. O `dev` só mostra os detalhes do health. Diferente dos outros serviços, o `dev` não importa `.env` e não liga Swagger, porque o gateway não tem segredos nem API própria.
 
+Rodando na máquina, o devtools reinicia o gateway sozinho quando o `application.yml` muda. As rotas são lidas na subida, então sem o reinício uma rota nova não vale.
+
 Health check: http://localhost:8080/actuator/health. Probes em `/actuator/health/liveness` e `/actuator/health/readiness`.
 
 ## Rotas
@@ -54,7 +56,20 @@ curl http://localhost:8080/accounts/10001
 - **Repasse transparente:** headers, status e corpo passam sem alteração. O `Idempotency-Key` chega ao transfer, e o `Location` dos `201` e `202` volta ao cliente.
 - **Rota nova:** todo endpoint público novo precisa de uma rota aqui. Esquecer a rota dá `404`, nunca exposição.
 
+As rotas ficam no `application.yml`, em `spring.cloud.gateway.server.webmvc.routes`. Os tutoriais antigos usam `spring.cloud.gateway.routes`, que não funciona com o artefato `spring-cloud-starter-gateway-server-webmvc`.
+
 Detalhes e alternativas no [ADR-0012](../docs/adr/0012-gateway-webmvc-e-rotas-liberadas.md).
+
+## Timeouts
+
+O gateway não tem propriedade de timeout própria: ele usa o cliente HTTP do Spring Boot, configurado em `spring.http.clients`.
+
+| Propriedade | Valor | Por quê |
+|---|---|---|
+| `connect-timeout` | `2s` | O mesmo do `AccountClient` do transfer. Se o serviço nem aceita a conexão em 2 segundos, ele está fora do ar. |
+| `read-timeout` | `10s` | Maior que os 5s do `AccountClient`. Um `POST /transfers` passa pelo gateway, pelo transfer e pelo account. Se o gateway desistisse antes do transfer, o cliente receberia erro enquanto a transferência ainda era concluída lá dentro. |
+
+Mesmo nesse caso, nada se perde: o cliente reenvia com o mesmo `Idempotency-Key` e recebe o resultado certo.
 
 ## Erros
 
@@ -65,7 +80,23 @@ Os erros do próprio gateway seguem o mesmo formato dos outros serviços:
 | Status | `code` | Quando |
 |---|---|---|
 | `404` | `ROUTE_NOT_FOUND` | O caminho não está na lista de rotas |
-| `503` | `SERVICE_UNAVAILABLE` | O serviço de destino não responde |
+| `503` | `SERVICE_UNAVAILABLE` | O serviço de destino não responde: conexão recusada ou timeout |
+| `500` | sem `code` | Erro inesperado no próprio gateway (o detalhe vai só para o log) |
+
+```json
+{
+  "title": "Service Unavailable",
+  "status": 503,
+  "detail": "The service is temporarily unavailable. Please try again later.",
+  "instance": "/accounts",
+  "code": "SERVICE_UNAVAILABLE"
+}
+```
+
+- **Rota inexistente:** o Spring lança `NoResourceFoundException`, e o `GlobalExceptionHandler` acrescenta o `code` ao Problem Details padrão.
+- **Serviço fora do ar:** o gateway chama os serviços com o `RestClient`, que embrulha a falha de rede numa `ResourceAccessException`. Sem tratamento, ela viraria um `500`, e o cliente acharia que o defeito é do gateway.
+- **Log do 503:** é um `WARN` de uma linha, com o caminho e a causa (`java.net.ConnectException`, por exemplo), sem stack trace. Serviço fora do ar é uma falha esperada, não um bug. O corpo da resposta não mostra endereço interno nem a causa.
+- **Erros dos serviços:** para o gateway, eles são respostas normais, e não exceções, por isso não passam pelo handler. O `404` do transfer ("transferência não existe") chega ao cliente como o transfer mandou, e não vira `ROUTE_NOT_FOUND`.
 
 O health do gateway não depende dos serviços: ele fica `UP` mesmo com o account fora do ar. Se ficasse `DOWN`, o Kubernetes tiraria o gateway do balanceamento, e todas as rotas parariam por causa de um serviço só.
 
@@ -76,7 +107,15 @@ cd matilha-gateway
 ./mvnw verify
 ```
 
-Não precisa do Docker: o gateway não tem banco nem Kafka. Os serviços de destino são simulados com o servidor HTTP do JDK, a mesma técnica do `AccountClientTest` do transfer.
+Não precisa do Docker: o gateway não tem banco nem Kafka. Os testes sobem o gateway de verdade numa porta aleatória (`@SpringBootTest` com `RANDOM_PORT`), e cada serviço de destino é um servidor HTTP do JDK, a mesma técnica do `AccountClientTest` do transfer. Os endereços falsos entram pelo `@DynamicPropertySource`.
+
+- **Rotas** (`GatewayRoutingTest`): cada caminho chega ao serviço certo, e só a ele. A query string chega intacta, e o corpo da resposta volta igual.
+- **Bloqueio:** `/internal/transfers`, `/internal/deposits`, `/admin/accounts` e `/accountsx` recebem `404` com `ROUTE_NOT_FOUND`, e nenhum serviço falso recebe a requisição. O `/accountsx` prova que `/accounts/**` não casa com prefixos parecidos.
+- **Headers:** em `201` e `202`, o `Idempotency-Key`, o `Content-Type` e o corpo chegam ao transfer, e o `Location` volta ao cliente.
+- **Erros dos serviços:** um `422` em Problem Details chega byte a byte igual, e o `404` do transfer não vira `ROUTE_NOT_FOUND`.
+- **Serviço fora do ar** (`GatewayServiceUnavailableTest`): com os três serviços apontando para portas fechadas, as três rotas devolvem `503` com `SERVICE_UNAVAILABLE`, sem vazar endereço nem causa, e o `/actuator/health/readiness` continua `UP`.
+
+A [collection do Postman](../postman/matilha-transfer.postman_collection.json) roda o fluxo inteiro pelo gateway (`baseUrl` na 8080), e a pasta "0. Gateway" confere o bloqueio do `/internal/**`.
 
 ## CI
 
@@ -90,9 +129,10 @@ O workflow [gateway-ci.yml](../.github/workflows/gateway-ci.yml) roda em push pa
 ```
 matilha-gateway/
 ├── src/main/java/com/matilha/gateway/
+│   ├── exception/           # GlobalExceptionHandler (404 e 503 em Problem Details) e ErrorCode
 │   └── GatewayApplication.java
 ├── src/main/resources/
-│   ├── application.yml      # Porta, Actuator e endereços dos serviços
+│   ├── application.yml      # Rotas, timeouts, Actuator e endereços dos serviços
 │   └── application-dev.yml  # Detalhes do health
 ├── Dockerfile
 └── compose.yaml             # Só o gateway, com os endereços do Docker
