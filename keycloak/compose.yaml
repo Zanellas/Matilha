@@ -1,0 +1,22 @@
+name: matilha
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.5
+    container_name: matilha-keycloak
+    command: ["start-dev", "--import-realm"]
+    ports:
+      - "127.0.0.1:8180:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:?defina KEYCLOAK_ADMIN_USERNAME no .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?defina KEYCLOAK_ADMIN_PASSWORD no .env}
+      KC_HOSTNAME: http://localhost:8180
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./realm-matilha.json:/opt/keycloak/data/import/realm-matilha.json:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/localhost/9000 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "UP" <&3']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
