@@ -1,6 +1,8 @@
 package com.matilha.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -12,6 +14,7 @@ import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -24,8 +27,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
@@ -33,6 +39,9 @@ import com.sun.net.httpserver.HttpServer;
 /**
  * Sobe o gateway de verdade, numa porta aleatória, com um servidor HTTP do JDK no lugar de cada serviço.
  * É a mesma técnica do AccountClientTest do transfer. Não precisa do Docker.
+ *
+ * O JwtDecoder é um mock que aceita qualquer token: aqui o assunto é o roteamento.
+ * A validação de verdade do token está no GatewaySecurityTest.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class GatewayRoutingTest {
@@ -41,6 +50,7 @@ class GatewayRoutingTest {
     private static final FakeService TRANSFER = FakeService.start();
     private static final FakeService NOTIFICATION = FakeService.start();
 
+    private static final String TOKEN = "test-token";
     private static final String IDEMPOTENCY_KEY = "8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d";
     private static final String TRANSFER_ID = "c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f";
     private static final String TRANSFER_REQUEST = """
@@ -50,6 +60,9 @@ class GatewayRoutingTest {
 
     @LocalServerPort
     private int port;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
 
     @DynamicPropertySource
     static void serviceUrls(DynamicPropertyRegistry registry) {
@@ -70,6 +83,12 @@ class GatewayRoutingTest {
         ACCOUNT.reset();
         TRANSFER.reset();
         NOTIFICATION.reset();
+        given(jwtDecoder.decode(anyString())).willReturn(Jwt.withTokenValue(TOKEN)
+                .header("alg", "RS256")
+                .subject("00000000-0000-0000-0003-000000000001")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(300))
+                .build());
     }
 
     @Nested
@@ -119,6 +138,7 @@ class GatewayRoutingTest {
 
     /**
      * Lista de liberação (ADR-0012): o que não tem rota recebe 404 do próprio gateway e nunca chega a um serviço.
+     * As requisições levam token; sem token, o 401 vem antes (veja o GatewaySecurityTest).
      */
     @Nested
     class Blocked {
@@ -162,6 +182,16 @@ class GatewayRoutingTest {
             assertThat(received.headers().getFirst("Content-Type")).startsWith("application/json");
             assertThat(received.body()).isEqualTo(TRANSFER_REQUEST);
         }
+
+        /**
+         * O serviço recebe o mesmo token do cliente, para validá-lo de novo e saber quem é o usuário.
+         */
+        @Test
+        void shouldForwardAuthorizationHeader() throws Exception {
+            get("/accounts/10001");
+
+            assertThat(ACCOUNT.single().headers().getFirst("Authorization")).isEqualTo("Bearer " + TOKEN);
+        }
     }
 
     /**
@@ -203,13 +233,17 @@ class GatewayRoutingTest {
     }
 
     private HttpResponse<String> get(String path) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(gatewayUri(path)).GET().build();
+        HttpRequest request = HttpRequest.newBuilder(gatewayUri(path))
+                .header("Authorization", "Bearer " + TOKEN)
+                .GET()
+                .build();
         return http.send(request, BodyHandlers.ofString());
     }
 
     private HttpResponse<String> post(String path, Map<String, String> headers, String json)
             throws IOException, InterruptedException {
         HttpRequest.Builder request = HttpRequest.newBuilder(gatewayUri(path))
+                .header("Authorization", "Bearer " + TOKEN)
                 .header("Content-Type", "application/json")
                 .POST(BodyPublishers.ofString(json));
         headers.forEach(request::header);

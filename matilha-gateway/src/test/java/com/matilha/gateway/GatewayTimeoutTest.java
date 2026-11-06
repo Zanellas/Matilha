@@ -1,6 +1,8 @@
 package com.matilha.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -13,14 +15,19 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.sun.net.httpserver.HttpServer;
 
@@ -45,6 +52,20 @@ class GatewayTimeoutTest {
     @LocalServerPort
     private int port;
 
+    /** O assunto aqui não é o token: o mock aceita qualquer um. */
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
+
+    @BeforeEach
+    void acceptAnyToken() {
+        given(jwtDecoder.decode(anyString())).willReturn(Jwt.withTokenValue("test-token")
+                .header("alg", "RS256")
+                .subject("00000000-0000-0000-0003-000000000001")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(300))
+                .build());
+    }
+
     @DynamicPropertySource
     static void serviceUrls(DynamicPropertyRegistry registry) {
         registry.add("matilha.account.base-url", () -> "http://localhost:" + SLOW_ACCOUNT.getAddress().getPort());
@@ -58,6 +79,7 @@ class GatewayTimeoutTest {
     @Test
     void shouldReturnServiceUnavailableWhenServiceIsSlowerThanReadTimeout() throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/accounts/10001"))
+                .header("Authorization", "Bearer test-token")
                 .timeout(Duration.ofSeconds(4))
                 .GET()
                 .build();
