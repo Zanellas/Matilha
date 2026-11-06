@@ -92,6 +92,24 @@ O `compose.yaml` da raiz inclui a infraestrutura (`infra/compose.yaml`: Kafka e 
 
 Outros modos de rodar, endpoints, regras e testes estão no README de cada serviço. A [collection do Postman](postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro pelo gateway: depósito (direto no account, porque é interno), transferência e notificações.
 
+## Como rodar no Kubernetes
+
+O mesmo sistema roda num cluster local com [kind](https://kind.sigs.k8s.io/), com **duas réplicas de cada serviço** e o gateway em `http://localhost:8080`, o único exposto. Pré-requisitos: Docker Desktop, kind e kubectl.
+
+```powershell
+# copie os três k8s/infra/*-db-secret.example.yaml para *-db-secret.yaml e defina usuário e senha
+.\k8s\deploy.ps1
+```
+
+Com duas réplicas, o que os ADRs prometem foi testado com vários processos, e cada prova tem um script em [k8s/provas/](k8s/provas/):
+
+- 40 transferências simultâneas em sentidos opostos, com dois accounts disputando as mesmas contas: nenhum deadlock e a soma dos saldos intacta
+- account fora do ar: a transferência fica `PENDING`, e uma réplica só do transfer a completa quando ele volta
+- `rollout restart` do account com transferências chegando: 253 concluídas, 1 `PENDING` resolvida pelo reconciliador e nenhum erro para o cliente
+- as duas réplicas do notification dividindo as partições do Kafka
+
+Como pausar, atualizar um serviço, acessar o que não é público e resolver problemas comuns: [k8s/README.md](k8s/README.md).
+
 ## Decisões principais
 
 - **Gateway com lista de liberação.** O matilha-gateway (Spring Cloud Gateway Server Web MVC, o mesmo modelo servlet dos outros serviços) conhece só `/accounts`, `/transfers` e `/notifications`. Não existe regra que bloqueia `/internal/**`: o bloqueio é a ausência de rota. Assim, um endpoint interno novo, com qualquer prefixo, nasce protegido. Serviço fora do ar vira `503` em Problem Details, e o health do gateway não depende dos serviços, para a queda de um não derrubar as rotas dos outros. Detalhes no [ADR-0012](docs/adr/0012-gateway-webmvc-e-rotas-liberadas.md).
@@ -109,7 +127,7 @@ Outros modos de rodar, endpoints, regras e testes estão no README de cada servi
 
 ## Stack
 
-Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), Spring Cloud Gateway Server Web MVC (2025.1, Oakwood), PostgreSQL 17, Flyway, Kafka (Spring Kafka), RestClient, springdoc-openapi, JUnit 5, Mockito, MockMvc, Testcontainers, Awaitility, Docker Compose e GitHub Actions (um workflow por serviço: testes e build da imagem).
+Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), Spring Cloud Gateway Server Web MVC (2025.1, Oakwood), PostgreSQL 17, Flyway, Kafka (Spring Kafka), RestClient, springdoc-openapi, JUnit 5, Mockito, MockMvc, Testcontainers, Awaitility, Docker Compose, Kubernetes (kind e Kustomize) e GitHub Actions (um workflow por serviço: testes e build da imagem).
 
 ## Roadmap
 
@@ -119,5 +137,5 @@ Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator), Spring Cloud
 - [x] Eventos de transferência no Kafka com transactional outbox
 - [x] matilha-notification consumindo os eventos (registro idempotente, sem envio real)
 - [x] matilha-gateway como porta de entrada, com rotas por lista de liberação
-- [ ] Deploy no Kubernetes, com só o gateway exposto
+- [x] Deploy no Kubernetes, com só o gateway exposto e duas réplicas de cada serviço
 - [ ] Autenticação com Keycloak no gateway
