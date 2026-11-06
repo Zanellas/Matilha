@@ -12,6 +12,7 @@ Faz parte do [Matilha](../README.md).
 | account, transfer, notification | Deployment + Service ClusterIP | 2 cada | só de dentro do cluster, ou por `port-forward` |
 | account-db, transfer-db, notification-db | StatefulSet + Service + volume de 1Gi | 1 cada | só de dentro do cluster |
 | kafka | StatefulSet + Service + volume de 1Gi | 1 | só de dentro do cluster |
+| kafka-ui | Deployment + Service ClusterIP | 1 | por `port-forward`, em `http://localhost:8090` |
 
 Tudo fica no namespace `matilha`. Os Services têm os mesmos nomes do compose (`account`, `account-db`, `kafka`...), então os endereços entre os serviços são os mesmos: `http://account:8081`, `jdbc:postgresql://account-db:5432/...`. A diferença é o Kafka, que no cluster tem um listener só: `kafka:9092`.
 
@@ -60,6 +61,8 @@ docker build -t matilha-transfer:dev matilha-transfer
 docker build -t matilha-notification:dev matilha-notification
 docker build -t matilha-gateway:dev matilha-gateway
 kind load docker-image matilha-account:dev matilha-transfer:dev matilha-notification:dev matilha-gateway:dev --name matilha
+docker pull ghcr.io/kafbat/kafka-ui:v1.5.0
+kind load docker-image ghcr.io/kafbat/kafka-ui:v1.5.0 --name matilha
 ```
 
 A tag é `dev`, e não `latest`, de propósito: com `latest`, o Kubernetes tentaria baixar a imagem da internet. Com uma tag fixa e `imagePullPolicy: IfNotPresent`, ele usa a que já está no nó.
@@ -71,7 +74,7 @@ kubectl apply -k k8s
 kubectl get pods -w
 ```
 
-Espere os 12 pods ficarem `1/1 Running` (de 1 a 2 minutos) e saia com `Ctrl+C`. Os serviços podem reiniciar uma ou duas vezes enquanto os bancos e o Kafka sobem. Isso é normal: no Kubernetes não existe `depends_on`, e o pod tenta de novo até conseguir.
+Espere os 13 pods ficarem `1/1 Running` (de 1 a 2 minutos) e saia com `Ctrl+C`. Os serviços podem reiniciar uma ou duas vezes enquanto os bancos e o Kafka sobem. Isso é normal: no Kubernetes não existe `depends_on`, e o pod tenta de novo até conseguir.
 
 **5. Teste:**
 
@@ -128,6 +131,7 @@ kubectl port-forward svc/account 8081:8081
 | Health check do transfer | `kubectl port-forward svc/transfer 8082:8082` |
 | Health check do notification | `kubectl port-forward svc/notification 8083:8083` |
 | Um banco pelo DBeaver ou pelo psql da máquina | `kubectl port-forward svc/account-db 15432:5432` |
+| Kafka UI (tópicos, mensagens e grupos de consumidores) | `kubectl port-forward svc/kafka-ui 8090:8080`, e abra http://localhost:8090 |
 
 O Swagger não aparece no cluster, porque os serviços rodam sem o perfil `dev`.
 
@@ -180,7 +184,8 @@ k8s/
 ├── infra/
 │   ├── account-db.yaml       # StatefulSet + Service + volume (o mesmo para transfer-db e notification-db)
 │   ├── *-secret.example.yaml # modelos dos Secrets (os *-secret.yaml reais ficam fora do Git)
-│   └── kafka.yaml            # Kafka KRaft de nó único, com volume
+│   ├── kafka.yaml            # Kafka KRaft de nó único, com volume
+│   └── kafka-ui.yaml         # ferramenta de inspeção do Kafka, só por port-forward
 └── services/
     ├── account.yaml          # ConfigMap + Service + Deployment (o mesmo para transfer e notification)
     └── gateway.yaml          # o único Service NodePort
