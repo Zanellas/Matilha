@@ -16,6 +16,7 @@ Cada arquivo registra uma decisão importante do Matilha: o problema, o que foi 
 | [0010](0010-flyway-e-testes-com-postgres-real.md) | Schema com Flyway e testes contra PostgreSQL real |
 | [0011](0011-consumidor-idempotente-e-dlt.md) | Consumidor idempotente e Dead Letter Topic |
 | [0012](0012-gateway-webmvc-e-rotas-liberadas.md) | Gateway Web MVC com rotas por lista de liberação |
+| [0013](0013-kubernetes-local-com-kind.md) | Kubernetes local com kind, sem Ingress e sem operators, e duas réplicas de cada serviço |
 
 
 ## Formato
