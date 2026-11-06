@@ -44,7 +44,17 @@ Copy-Item k8s/infra/notification-db-secret.example.yaml k8s/infra/notification-d
 
 Os `*-secret.yaml` estão no `.gitignore` e nunca devem ser commitados. Só os `.example` vão para o Git.
 
-**2. Crie o cluster:**
+**2. Rode o script de deploy:**
+
+```powershell
+.\k8s\deploy.ps1
+```
+
+Ele cria o cluster se ainda não existir, gera as quatro imagens, carrega tudo no kind, aplica os manifests e espera os serviços ficarem prontos. Na primeira vez leva alguns minutos. No fim, aparece `Pronto: http://localhost:8080`.
+
+Os passos 3 a 5 abaixo são o que o script faz, para quem quiser rodar à mão ou entender cada parte.
+
+**3. Crie o cluster:**
 
 ```powershell
 kind create cluster --config k8s/kind-config.yaml
@@ -53,7 +63,7 @@ kubectl config set-context --current --namespace=matilha
 
 O segundo comando deixa o `matilha` como namespace padrão, para não precisar de `-n matilha` em todo comando.
 
-**3. Gere as imagens e carregue no cluster.** O kind roda dentro de um container e não enxerga as imagens do seu Docker sem o `kind load`:
+**4. Gere as imagens e carregue no cluster.** O kind roda dentro de um container e não enxerga as imagens do seu Docker sem o `kind load`:
 
 ```powershell
 docker build -t matilha-account:dev matilha-account
@@ -67,7 +77,7 @@ kind load docker-image ghcr.io/kafbat/kafka-ui:v1.5.0 --name matilha
 
 A tag é `dev`, e não `latest`, de propósito: com `latest`, o Kubernetes tentaria baixar a imagem da internet. Com uma tag fixa e `imagePullPolicy: IfNotPresent`, ele usa a que já está no nó.
 
-**4. Suba tudo:**
+**5. Suba tudo:**
 
 ```powershell
 kubectl apply -k k8s
@@ -76,7 +86,7 @@ kubectl get pods -w
 
 Espere os 13 pods ficarem `1/1 Running` (de 1 a 2 minutos) e saia com `Ctrl+C`. Os serviços podem reiniciar uma ou duas vezes enquanto os bancos e o Kafka sobem. Isso é normal: no Kubernetes não existe `depends_on`, e o pod tenta de novo até conseguir.
 
-**5. Teste:**
+**6. Teste:**
 
 ```powershell
 curl.exe -i http://localhost:8080/accounts
@@ -94,17 +104,23 @@ kubectl get pods -w                   # esperar tudo voltar
 
 ## Apagar e recriar do zero
 
-Apaga o cluster com todos os dados:
+Apaga o cluster com todos os dados (pede confirmação):
 
 ```powershell
-kind delete cluster --name matilha
+.\k8s\destroy.ps1
 ```
 
-Para recriar, repita os passos 2 a 4 da "Primeira vez". Os Secrets do passo 1 continuam no disco.
+Para recriar, rode o `.\k8s\deploy.ps1` de novo. Os Secrets do passo 1 continuam no disco.
 
 ## Depois de mudar o código de um serviço
 
-Gere a imagem de novo, carregue e reinicie só aquele serviço:
+```powershell
+.\k8s\deploy.ps1 -Servicos transfer
+```
+
+O script gera a imagem só daquele serviço, carrega no kind e reinicia o Deployment. Dá para passar mais de um (`-Servicos account,transfer`). Depois de mudar só um YAML de `k8s/`, use `.\k8s\deploy.ps1 -SemBuild`.
+
+À mão, são estes comandos:
 
 ```powershell
 docker build -t matilha-transfer:dev matilha-transfer
@@ -116,6 +132,28 @@ kubectl rollout status deployment/transfer
 O `rollout restart` é necessário porque a tag continua `dev`: para o Kubernetes, o Deployment não mudou. O restart cria pods novos, que pegam a imagem nova do nó, e troca um de cada vez, sem tirar o serviço do ar.
 
 Depois de mudar um YAML de `k8s/`, basta `kubectl apply -k k8s`.
+
+## Provas com duas réplicas
+
+O motivo de rodar cada serviço com 2 réplicas é mostrar, e não só afirmar, que o que os ADRs prometem vale com vários processos. Cada prova tem um script em [provas/](provas/), que roda contra o cluster no ar e imprime o resultado.
+
+| Prova | Script | Resultado obtido |
+|---|---|---|
+| As duas réplicas do notification dividem as 3 partições do tópico (ADR-0011) | `1-particoes-notification.ps1` | Partições 0 e 1 numa réplica, 2 na outra, com `LAG` 0 |
+| Transferências simultâneas em sentidos opostos, com dois accounts disputando as mesmas linhas, sem deadlock (ADR-0003) | `2-transferencias-simultaneas.ps1 -ContarPorPod` | 40 de 40 `COMPLETED`, soma dos saldos igual antes e depois, chamadas divididas entre os dois pods do account |
+| Com o account fora do ar, a transferência fica `PENDING`, e uma réplica só do transfer a completa quando ele volta (ADR-0005 e ADR-0006) | `3-reconciliador.ps1` | `202 PENDING`, depois `COMPLETED`, com o log do reconciliador em um pod só |
+| `rollout restart` do account com transferências chegando a cada 200 ms | `4-rollout-sem-erro.ps1` | 253 `COMPLETED`, 1 `PENDING` que o reconciliador completou, nenhum erro, soma igual |
+
+```powershell
+.\k8s\provas\1-particoes-notification.ps1
+.\k8s\provas\2-transferencias-simultaneas.ps1 -ContarPorPod
+.\k8s\provas\3-reconciliador.ps1
+.\k8s\provas\4-rollout-sem-erro.ps1
+```
+
+Os scripts usam as contas 10001 e 10002 e movem valores nos dois sentidos, então os saldos terminam onde começaram. Antes da prova 1, rode pelo menos uma transferência (ou a collection do Postman) para o tópico ter eventos.
+
+**Sobre o `PENDING` da prova 4:** ele não é falha. Uma chamada pegou uma réplica do account no meio do desligamento, por uma conexão reaproveitada. O transfer não sabia se o dinheiro tinha sido movido, então respondeu `202` em vez de errar, e o reconciliador terminou a transferência. É o "timeout não é falha" do ADR-0005 acontecendo durante uma operação de rotina.
 
 ## Acessar o que não é público
 
@@ -178,6 +216,8 @@ O segundo mostra como as 3 partições do `matilha.transfer.events` estão divid
 
 ```
 k8s/
+├── deploy.ps1                # cria o cluster, gera as imagens, carrega no kind e aplica
+├── destroy.ps1               # apaga o cluster
 ├── kind-config.yaml          # cluster de um nó; a porta 8080 da máquina vai para o NodePort 30080
 ├── kustomization.yaml        # lista os arquivos e põe tudo no namespace matilha
 ├── namespace.yaml
@@ -186,9 +226,10 @@ k8s/
 │   ├── *-secret.example.yaml # modelos dos Secrets (os *-secret.yaml reais ficam fora do Git)
 │   ├── kafka.yaml            # Kafka KRaft de nó único, com volume
 │   └── kafka-ui.yaml         # ferramenta de inspeção do Kafka, só por port-forward
-└── services/
-    ├── account.yaml          # ConfigMap + Service + Deployment (o mesmo para transfer e notification)
-    └── gateway.yaml          # o único Service NodePort
+├── services/
+│   ├── account.yaml          # ConfigMap + Service + Deployment (o mesmo para transfer e notification)
+│   └── gateway.yaml          # o único Service NodePort
+└── provas/                   # um script por prova com duas réplicas
 ```
 
 **Decisões que valem para todos os pods:**
