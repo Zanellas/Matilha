@@ -2,6 +2,7 @@ name: matilha
 
 include:
   - infra/compose.yaml
+  - keycloak/compose.yaml
   - matilha-gateway/compose.yaml
   - matilha-account/compose.yaml
   - matilha-transfer/compose.yaml
