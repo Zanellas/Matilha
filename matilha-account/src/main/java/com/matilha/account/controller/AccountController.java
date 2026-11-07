@@ -4,8 +4,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -18,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.matilha.account.dto.AccountResponseDto;
 import com.matilha.account.dto.AccountSummaryDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
+import com.matilha.account.dto.RequesterDto;
 import com.matilha.account.dto.UpdateAccountRequestDto;
 import com.matilha.account.service.AccountService;
 
@@ -32,30 +32,32 @@ public class AccountController {
     private final AccountService accountService;
 
     @PostMapping
-    public ResponseEntity<AccountResponseDto> create(@RequestBody @Valid CreateAccountRequestDto request, @AuthenticationPrincipal Jwt jwt) {
-        AccountResponseDto response = accountService.create(request, jwt.getSubject());
+    public ResponseEntity<AccountResponseDto> create(@RequestBody @Valid CreateAccountRequestDto request,
+            Authentication authentication) {
+        AccountResponseDto response = accountService.create(request, RequesterDto.from(authentication));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/{accountNumber}")
-    public ResponseEntity<AccountResponseDto> findByAccountNumber(@PathVariable String accountNumber) {
-        return ResponseEntity.ok(accountService.findByAccountNumber(accountNumber));
+    public ResponseEntity<AccountResponseDto> findByAccountNumber(@PathVariable String accountNumber,
+            Authentication authentication) {
+        return ResponseEntity.ok(accountService.findByAccountNumber(accountNumber, RequesterDto.from(authentication)));
     }
 
     @GetMapping
-    public ResponseEntity<PagedModel<AccountSummaryDto>> findAll(Pageable pageable) {
-        return ResponseEntity.ok(new PagedModel<>(accountService.findAll(pageable)));
+    public ResponseEntity<PagedModel<AccountSummaryDto>> findAll(Pageable pageable, Authentication authentication) {
+        return ResponseEntity.ok(new PagedModel<>(accountService.findAll(pageable, RequesterDto.from(authentication))));
     }
 
     @PatchMapping("/{accountNumber}")
     public ResponseEntity<AccountResponseDto> update(@PathVariable String accountNumber,
-            @RequestBody @Valid UpdateAccountRequestDto request) {
-        return ResponseEntity.ok(accountService.update(accountNumber, request));
+            @RequestBody @Valid UpdateAccountRequestDto request, Authentication authentication) {
+        return ResponseEntity.ok(accountService.update(accountNumber, request, RequesterDto.from(authentication)));
     }
 
     @DeleteMapping("/{accountNumber}")
-    public ResponseEntity<Void> close(@PathVariable String accountNumber) {
-        accountService.close(accountNumber);
+    public ResponseEntity<Void> close(@PathVariable String accountNumber, Authentication authentication) {
+        accountService.close(accountNumber, RequesterDto.from(authentication));
         return ResponseEntity.noContent().build();
     }
 

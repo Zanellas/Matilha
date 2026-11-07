@@ -52,6 +52,7 @@ import com.matilha.account.config.SecurityConfig;
 import com.matilha.account.dto.AccountResponseDto;
 import com.matilha.account.dto.AccountSummaryDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
+import com.matilha.account.dto.RequesterDto;
 import com.matilha.account.dto.UpdateAccountRequestDto;
 import com.matilha.account.entity.AccountStatus;
 import com.matilha.account.exception.AccountNotFoundException;
@@ -70,6 +71,8 @@ import com.matilha.account.service.AccountService;
 class AccountControllerTest {
 
     private static final String ANA = "00000000-0000-0000-0003-000000000001";
+    private static final String SUPORTE = "00000000-0000-0000-0003-000000000003";
+    private static final RequesterDto ANA_CUSTOMER = new RequesterDto(ANA, false);
 
     @Autowired
     private MockMvc mockMvc;
@@ -124,7 +127,7 @@ class AccountControllerTest {
         void shouldReturnCreatedWithAccount() throws Exception {
             CreateAccountRequestDto request = new CreateAccountRequestDto(
                     "Ana Silva", "529.982.247-25", "ana.silva@example.com", "(11) 98765-4321");
-            when(accountService.create(request, ANA)).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
+            when(accountService.create(request, ANA_CUSTOMER)).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
 
             mockMvc.perform(post("/accounts").with(customer())
                     .contentType(MediaType.APPLICATION_JSON)
@@ -155,7 +158,7 @@ class AccountControllerTest {
 
             verify(accountService).create(
                     new CreateAccountRequestDto("Ana Silva", "529.982.247-25", "ana.silva@example.com", "(11) 98765-4321"),
-                    ANA);
+                    ANA_CUSTOMER);
         }
 
         @Test
@@ -254,7 +257,7 @@ class AccountControllerTest {
 
         @Test
         void shouldReturnAccount() throws Exception {
-            when(accountService.findByAccountNumber("12345")).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
+            when(accountService.findByAccountNumber(eq("12345"), any())).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
 
             mockMvc.perform(get("/accounts/12345").with(customer()))
                     .andExpect(status().isOk())
@@ -265,7 +268,7 @@ class AccountControllerTest {
 
         @Test
         void shouldReturnNotFoundWhenAccountDoesNotExist() throws Exception {
-            when(accountService.findByAccountNumber("99999")).thenThrow(new AccountNotFoundException("99999"));
+            when(accountService.findByAccountNumber(eq("99999"), any())).thenThrow(new AccountNotFoundException("99999"));
 
             mockMvc.perform(get("/accounts/99999").with(customer()))
                     .andExpect(status().isNotFound())
@@ -283,7 +286,7 @@ class AccountControllerTest {
             List<AccountSummaryDto> accounts = List.of(
                     new AccountSummaryDto("11111", "Ana Silva", AccountStatus.ACTIVE),
                     new AccountSummaryDto("22222", "Bruno Costa", AccountStatus.BLOCKED));
-            when(accountService.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(accounts, pageable, 5));
+            when(accountService.findAll(any(Pageable.class), any())).thenReturn(new PageImpl<>(accounts, pageable, 5));
 
             mockMvc.perform(get("/accounts").with(customer()).param("page", "0").param("size", "2"))
                     .andExpect(status().isOk())
@@ -300,7 +303,7 @@ class AccountControllerTest {
         @Test
         void shouldNotExposeContactDataOrBalanceInListing() throws Exception {
             List<AccountSummaryDto> accounts = List.of(new AccountSummaryDto("11111", "Ana Silva", AccountStatus.ACTIVE));
-            when(accountService.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(accounts));
+            when(accountService.findAll(any(Pageable.class), any())).thenReturn(new PageImpl<>(accounts));
 
             mockMvc.perform(get("/accounts").with(customer()))
                     .andExpect(status().isOk())
@@ -312,13 +315,13 @@ class AccountControllerTest {
 
         @Test
         void shouldPassPaginationParametersToService() throws Exception {
-            when(accountService.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+            when(accountService.findAll(any(Pageable.class), any())).thenReturn(new PageImpl<>(List.of()));
 
             mockMvc.perform(get("/accounts").with(customer()).param("page", "2").param("size", "5"))
                     .andExpect(status().isOk());
 
             ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-            verify(accountService).findAll(captor.capture());
+            verify(accountService).findAll(captor.capture(), any());
             assertThat(captor.getValue().getPageNumber()).isEqualTo(2);
             assertThat(captor.getValue().getPageSize()).isEqualTo(5);
         }
@@ -326,13 +329,13 @@ class AccountControllerTest {
         /** Sem parâmetros vale o PageableConfig: primeira página, 20 itens, mais recente primeiro. */
         @Test
         void shouldUseDefaultsFromPageableConfig() throws Exception {
-            when(accountService.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+            when(accountService.findAll(any(Pageable.class), any())).thenReturn(new PageImpl<>(List.of()));
 
             mockMvc.perform(get("/accounts").with(customer()))
                     .andExpect(status().isOk());
 
             ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-            verify(accountService).findAll(captor.capture());
+            verify(accountService).findAll(captor.capture(), any());
             assertThat(captor.getValue().getPageNumber()).isZero();
             assertThat(captor.getValue().getPageSize()).isEqualTo(20);
             assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -344,13 +347,13 @@ class AccountControllerTest {
          */
         @Test
         void shouldCapPageSizeAt100() throws Exception {
-            when(accountService.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+            when(accountService.findAll(any(Pageable.class), any())).thenReturn(new PageImpl<>(List.of()));
 
             mockMvc.perform(get("/accounts").with(customer()).param("size", "5000"))
                     .andExpect(status().isOk());
 
             ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-            verify(accountService).findAll(captor.capture());
+            verify(accountService).findAll(captor.capture(), any());
             assertThat(captor.getValue().getPageSize()).isEqualTo(100);
         }
     }
@@ -361,7 +364,7 @@ class AccountControllerTest {
         @Test
         void shouldReturnUpdatedAccount() throws Exception {
             UpdateAccountRequestDto request = new UpdateAccountRequestDto("Ana Souza", null, null);
-            when(accountService.update("12345", request)).thenReturn(responseFor("12345", "Ana Souza", AccountStatus.ACTIVE));
+            when(accountService.update("12345", request, ANA_CUSTOMER)).thenReturn(responseFor("12345", "Ana Souza", AccountStatus.ACTIVE));
 
             mockMvc.perform(patch("/accounts/12345").with(customer())
                     .contentType(MediaType.APPLICATION_JSON)
@@ -375,7 +378,7 @@ class AccountControllerTest {
 
         @Test
         void shouldPassAllProvidedFieldsToService() throws Exception {
-            when(accountService.update(anyString(), any())).thenReturn(responseFor("12345", "Ana Souza", AccountStatus.ACTIVE));
+            when(accountService.update(anyString(), any(), any())).thenReturn(responseFor("12345", "Ana Souza", AccountStatus.ACTIVE));
 
             mockMvc.perform(patch("/accounts/12345").with(customer())
                     .contentType(MediaType.APPLICATION_JSON)
@@ -385,7 +388,7 @@ class AccountControllerTest {
                     .andExpect(status().isOk());
 
             verify(accountService).update("12345",
-                    new UpdateAccountRequestDto("Ana Souza", "ana.souza@example.com", "(21) 98765-4321"));
+                    new UpdateAccountRequestDto("Ana Souza", "ana.souza@example.com", "(21) 98765-4321"), ANA_CUSTOMER);
         }
 
         @ParameterizedTest
@@ -397,7 +400,7 @@ class AccountControllerTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.holderName").exists());
 
-            verify(accountService, never()).update(anyString(), any());
+            verify(accountService, never()).update(anyString(), any(), any());
         }
 
         @Test
@@ -410,7 +413,7 @@ class AccountControllerTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.holderEmail").exists());
 
-            verify(accountService, never()).update(anyString(), any());
+            verify(accountService, never()).update(anyString(), any(), any());
         }
 
         @Test
@@ -423,12 +426,12 @@ class AccountControllerTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.holderPhone").exists());
 
-            verify(accountService, never()).update(anyString(), any());
+            verify(accountService, never()).update(anyString(), any(), any());
         }
 
         @Test
         void shouldReturnNotFoundWhenAccountDoesNotExist() throws Exception {
-            when(accountService.update(eq("99999"), any())).thenThrow(new AccountNotFoundException("99999"));
+            when(accountService.update(eq("99999"), any(), any())).thenThrow(new AccountNotFoundException("99999"));
 
             mockMvc.perform(patch("/accounts/99999").with(customer())
                     .contentType(MediaType.APPLICATION_JSON)
@@ -441,7 +444,7 @@ class AccountControllerTest {
 
         @Test
         void shouldReturnUnprocessableContentWhenAccountIsClosed() throws Exception {
-            when(accountService.update(eq("12345"), any()))
+            when(accountService.update(eq("12345"), any(), any()))
                     .thenThrow(new BusinessException("Closed accounts cannot be updated"));
 
             mockMvc.perform(patch("/accounts/12345").with(customer())
@@ -463,12 +466,12 @@ class AccountControllerTest {
                     .andExpect(status().isNoContent())
                     .andExpect(content().string(""));
 
-            verify(accountService).close("12345");
+            verify(accountService).close("12345", ANA_CUSTOMER);
         }
 
         @Test
         void shouldReturnNotFoundWhenAccountDoesNotExist() throws Exception {
-            doThrow(new AccountNotFoundException("99999")).when(accountService).close("99999");
+            doThrow(new AccountNotFoundException("99999")).when(accountService).close(eq("99999"), any());
 
             mockMvc.perform(delete("/accounts/99999").with(customer()))
                     .andExpect(status().isNotFound())
@@ -478,7 +481,7 @@ class AccountControllerTest {
         @Test
         void shouldReturnUnprocessableContentWhenBalanceIsNotZero() throws Exception {
             doThrow(new BusinessException("Account balance must be zero to close"))
-                    .when(accountService).close("12345");
+                    .when(accountService).close(eq("12345"), any());
 
             mockMvc.perform(delete("/accounts/12345").with(customer()))
                     .andExpect(status().isUnprocessableContent())
@@ -563,7 +566,7 @@ class AccountControllerTest {
 
         @Test
         void shouldReturnUnprocessableContentForBusinessException() throws Exception {
-            when(accountService.findByAccountNumber("12345")).thenThrow(new BusinessException("Insufficient balance"));
+            when(accountService.findByAccountNumber(eq("12345"), any())).thenThrow(new BusinessException("Insufficient balance"));
 
             mockMvc.perform(get("/accounts/12345").with(customer()))
                     .andExpect(status().isUnprocessableContent())
@@ -572,7 +575,7 @@ class AccountControllerTest {
 
         @Test
         void shouldHideInternalDetailsForUnexpectedErrors() throws Exception {
-            when(accountService.findByAccountNumber("12345"))
+            when(accountService.findByAccountNumber(eq("12345"), any()))
                     .thenThrow(new RuntimeException("SELECT * FROM accounts -- connection refused"));
 
             mockMvc.perform(get("/accounts/12345").with(customer()))
@@ -594,7 +597,7 @@ class AccountControllerTest {
                     .andExpect(jsonPath("$.status").value(401))
                     .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
 
-            verify(accountService, never()).findByAccountNumber(anyString());
+            verify(accountService, never()).findByAccountNumber(anyString(), any());
         }
 
         /** Sem token, o POST recebe 401 e não 403: o CSRF está desligado, porque não existe sessão nem cookie. */
@@ -610,7 +613,7 @@ class AccountControllerTest {
         @Test
         void shouldNotCreateHttpSession() throws Exception {
             when(jwtDecoder.decode("keycloak-token")).thenReturn(keycloakToken(Map.of()));
-            when(accountService.findByAccountNumber("12345")).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
+            when(accountService.findByAccountNumber(eq("12345"), any())).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
 
             mockMvc.perform(get("/accounts/12345").header(HttpHeaders.AUTHORIZATION, "Bearer keycloak-token"))
                     .andExpect(status().isOk())
@@ -682,12 +685,39 @@ class AccountControllerTest {
         @Test
         void shouldTreatTokenWithoutRealmAccessAsNoRoles() throws Exception {
             when(jwtDecoder.decode("keycloak-token")).thenReturn(keycloakToken(Map.of("preferred_username", "ana")));
-            when(accountService.findByAccountNumber("12345")).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
+            when(accountService.findByAccountNumber(eq("12345"), any())).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
 
             mockMvc.perform(get("/accounts/12345").header(HttpHeaders.AUTHORIZATION, "Bearer keycloak-token"))
                     .andExpect(status().isOk());
             mockMvc.perform(post("/accounts/12345/block").header(HttpHeaders.AUTHORIZATION, "Bearer keycloak-token"))
                     .andExpect(status().isForbidden());
+        }
+
+        /** O RequesterDto sai do token: o sub vira o userId, e o papel admin do Keycloak vira admin = true. */
+        @Test
+        void shouldPassAdminRequesterWhenRealmRolesContainAdmin() throws Exception {
+            when(jwtDecoder.decode("keycloak-token")).thenReturn(keycloakToken(Map.of(
+                    "sub", SUPORTE,
+                    "realm_access", Map.of("roles", List.of("admin", "default-roles-matilha")))));
+            when(accountService.findAll(any(Pageable.class), any())).thenReturn(new PageImpl<>(List.of()));
+
+            mockMvc.perform(get("/accounts").header(HttpHeaders.AUTHORIZATION, "Bearer keycloak-token"))
+                    .andExpect(status().isOk());
+
+            verify(accountService).findAll(any(Pageable.class), eq(new RequesterDto(SUPORTE, true)));
+        }
+
+        @Test
+        void shouldPassCustomerRequesterWhenRealmRolesContainOnlyCustomer() throws Exception {
+            when(jwtDecoder.decode("keycloak-token")).thenReturn(keycloakToken(
+                    Map.of("realm_access", Map.of("roles", List.of("customer", "default-roles-matilha")))));
+            when(accountService.findByAccountNumber(eq("12345"), any()))
+                    .thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
+
+            mockMvc.perform(get("/accounts/12345").header(HttpHeaders.AUTHORIZATION, "Bearer keycloak-token"))
+                    .andExpect(status().isOk());
+
+            verify(accountService).findByAccountNumber("12345", ANA_CUSTOMER);
         }
     }
 }

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.matilha.account.dto.AccountResponseDto;
 import com.matilha.account.dto.AccountSummaryDto;
 import com.matilha.account.dto.CreateAccountRequestDto;
+import com.matilha.account.dto.RequesterDto;
 import com.matilha.account.dto.UpdateAccountRequestDto;
 import com.matilha.account.entity.Account;
 import com.matilha.account.exception.AccountNotFoundException;
@@ -26,8 +27,9 @@ public class AccountService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     @Transactional
-    public AccountResponseDto create(CreateAccountRequestDto request, String ownerId) {
-        Account account = new Account(ownerId, generateUniqueAccountNumber(), request.holderName(), request.holderDocument(),
+    public AccountResponseDto create(CreateAccountRequestDto request, RequesterDto requester) {
+        Account account = new Account(requester.userId(), generateUniqueAccountNumber(), request.holderName(),
+                request.holderDocument(),
                 request.holderEmail(), request.holderPhone());
         Account saved = accountRepository.save(account);
         return toResponse(saved);
@@ -42,15 +44,16 @@ public class AccountService {
     }
 
     @Transactional(readOnly = true)
-    public AccountResponseDto findByAccountNumber(String accountNumber) {
-        Account account = accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(() -> new AccountNotFoundException(accountNumber));
-        return toResponse(account);
+    public AccountResponseDto findByAccountNumber(String accountNumber, RequesterDto requester) {
+        return toResponse(findVisibleAccount(accountNumber, requester));
     }
 
     @Transactional(readOnly = true)
-    public Page<AccountSummaryDto> findAll(Pageable pageable) {
-        return accountRepository.findAll(pageable).map(this::toSummary);
+    public Page<AccountSummaryDto> findAll(Pageable pageable, RequesterDto requester) {
+        Page<Account> accounts = requester.admin()
+                ? accountRepository.findAll(pageable)
+                : accountRepository.findByOwnerId(requester.userId(), pageable);
+        return accounts.map(this::toSummary);
     }
 
     private AccountResponseDto toResponse(Account account) {
@@ -64,19 +67,31 @@ public class AccountService {
     }
 
     @Transactional
-    public AccountResponseDto update(String accountNumber, UpdateAccountRequestDto request) {
-        Account account = findAccountOrThrow(accountNumber);
+    public AccountResponseDto update(String accountNumber, UpdateAccountRequestDto request, RequesterDto requester) {
+        Account account = findOwnedAccount(accountNumber, requester);
         account.updateHolderData(request.holderName(), request.holderEmail(), request.holderPhone());
         return toResponse(account);
     }
 
     @Transactional
-    public void close(String accountNumber) {
-        findAccountOrThrow(accountNumber).close();
+    public void close(String accountNumber, RequesterDto requester) {
+        findOwnedAccount(accountNumber, requester).close();
     }
 
     private Account findAccountOrThrow(String accountNumber) {
         return accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new AccountNotFoundException(accountNumber));
+    }
+
+    private Account findVisibleAccount(String accountNumber, RequesterDto requester) {
+        if (requester.admin()) {
+            return findAccountOrThrow(accountNumber);
+        }
+        return findOwnedAccount(accountNumber, requester);
+    }
+
+    private Account findOwnedAccount(String accountNumber, RequesterDto requester) {
+        return accountRepository.findByAccountNumberAndOwnerId(accountNumber, requester.userId())
                 .orElseThrow(() -> new AccountNotFoundException(accountNumber));
     }
 
@@ -93,4 +108,5 @@ public class AccountService {
         account.unblock();
         return toResponse(account);
     }
+
 }
