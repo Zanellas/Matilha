@@ -14,6 +14,8 @@ public interface TransferRepository extends JpaRepository<Transfer, UUID> {
 
   Optional<Transfer> findByIdempotencyKey(UUID idempotencyKey);
 
+  Optional<Transfer> findByIdAndOwnerId(UUID id, String ownerId);
+
   @Query(value = """
       SELECT * FROM transfers
       WHERE status = 'PENDING'

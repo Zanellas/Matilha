@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public record AccountTransferRequestDto(
         UUID transferId,
+        String ownerId,
         String sourceAccountNumber,
         String targetAccountNumber,
         BigDecimal amount) {

@@ -36,6 +36,9 @@ public class Transfer {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(updatable = false)
+    private String ownerId;
+
     @Column(nullable = false, updatable = false, unique = true)
     private UUID idempotencyKey;
 
@@ -74,7 +77,8 @@ public class Transfer {
     @Version
     private Long version;
 
-    public Transfer(UUID idempotencyKey, String sourceAccountNumber, String targetAccountNumber, BigDecimal amount) {
+    public Transfer(String ownerId, UUID idempotencyKey, String sourceAccountNumber, String targetAccountNumber, BigDecimal amount) {
+        this.ownerId = requireNotBlank(ownerId, "ownerId");
         if (idempotencyKey == null) {
             throw new BusinessException("idempotencyKey must not be null");
         }
@@ -131,6 +135,10 @@ public class Transfer {
         return this.sourceAccountNumber.equals(sourceAccountNumber)
                 && this.targetAccountNumber.equals(targetAccountNumber)
                 && this.amount.compareTo(amount) == 0;
+    }
+
+    public boolean isOwnedBy(String userId) {
+        return ownerId != null && ownerId.equals(userId);
     }
 
     public void claimUntil(Instant until) {

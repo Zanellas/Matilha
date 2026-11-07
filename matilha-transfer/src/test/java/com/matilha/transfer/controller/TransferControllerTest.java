@@ -104,7 +104,7 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnCreatedWhenCompleted() throws Exception {
-            when(transferService.create(eq(KEY), any())).thenReturn(response(TransferStatus.COMPLETED));
+            when(transferService.create(eq(KEY), any(), any())).thenReturn(response(TransferStatus.COMPLETED));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
                     .andExpect(status().isCreated())
@@ -119,7 +119,7 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnAcceptedWhenPending() throws Exception {
-            when(transferService.create(eq(KEY), any())).thenReturn(response(TransferStatus.PENDING));
+            when(transferService.create(eq(KEY), any(), any())).thenReturn(response(TransferStatus.PENDING));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
                     .andExpect(status().isAccepted())
@@ -129,7 +129,7 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnProblemDetailWithTransferIdWhenFailed() throws Exception {
-            when(transferService.create(eq(KEY), any()))
+            when(transferService.create(eq(KEY), any(), any()))
                     .thenReturn(failed(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance"));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
@@ -146,7 +146,7 @@ class TransferControllerTest {
 
         @Test
         void shouldUseTheTransferCodeNotTheAccountText() throws Exception {
-            when(transferService.create(eq(KEY), any()))
+            when(transferService.create(eq(KEY), any(), any()))
                     .thenReturn(failed(FailureCode.REJECTED_BY_ACCOUNT, "Some new message from account"));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
@@ -156,7 +156,7 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnSameProblemDetailWhenReplayingFailedTransfer() throws Exception {
-            when(transferService.create(eq(KEY), any()))
+            when(transferService.create(eq(KEY), any(), any()))
                     .thenReturn(failed(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance"));
 
             for (int attempt = 0; attempt < 2; attempt++) {
@@ -170,7 +170,7 @@ class TransferControllerTest {
 
         @Test
         void shouldUseSameFormatForFailedTransferAndOtherBusinessErrors() throws Exception {
-            when(transferService.create(eq(KEY), any()))
+            when(transferService.create(eq(KEY), any(), any()))
                     .thenThrow(new BusinessException("Idempotency key already used with different data"));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
@@ -181,19 +181,20 @@ class TransferControllerTest {
                     .andExpect(jsonPath("$.code").doesNotExist());
         }
 
+        /** O dono da transferência é o sub do token, nunca um campo do corpo. */
         @Test
-        void shouldPassKeyAndBodyToService() throws Exception {
-            when(transferService.create(any(), any())).thenReturn(response(TransferStatus.COMPLETED));
+        void shouldPassKeyBodyAndTokenSubjectToService() throws Exception {
+            when(transferService.create(any(), any(), any())).thenReturn(response(TransferStatus.COMPLETED));
 
             mockMvc.perform(postTransfer(VALID_REQUEST));
 
             verify(transferService).create(KEY,
-                    new CreateTransferRequestDto("10001", "10002", new BigDecimal("250.50")));
+                    new CreateTransferRequestDto("10001", "10002", new BigDecimal("250.50")), ANA);
         }
 
         @Test
         void shouldAcceptHeaderNameInAnyCase() throws Exception {
-            when(transferService.create(eq(KEY), any())).thenReturn(response(TransferStatus.COMPLETED));
+            when(transferService.create(eq(KEY), any(), any())).thenReturn(response(TransferStatus.COMPLETED));
 
             mockMvc.perform(post("/transfers").with(user())
                     .header("idempotency-key", KEY.toString())
@@ -204,7 +205,7 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnUnprocessableWhenKeyWasUsedWithDifferentData() throws Exception {
-            when(transferService.create(eq(KEY), any()))
+            when(transferService.create(eq(KEY), any(), any()))
                     .thenThrow(new BusinessException("Idempotency key already used with different data"));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
@@ -214,7 +215,7 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnConflictOnDataIntegrityViolation() throws Exception {
-            when(transferService.create(eq(KEY), any())).thenThrow(new DataIntegrityViolationException("boom"));
+            when(transferService.create(eq(KEY), any(), any())).thenThrow(new DataIntegrityViolationException("boom"));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
                     .andExpect(status().isConflict())
@@ -223,7 +224,7 @@ class TransferControllerTest {
 
         @Test
         void shouldHideUnexpectedErrorDetails() throws Exception {
-            when(transferService.create(eq(KEY), any())).thenThrow(new IllegalStateException("secret internals"));
+            when(transferService.create(eq(KEY), any(), any())).thenThrow(new IllegalStateException("secret internals"));
 
             mockMvc.perform(postTransfer(VALID_REQUEST))
                     .andExpect(status().isInternalServerError())
@@ -241,7 +242,7 @@ class TransferControllerTest {
                     .content(VALID_REQUEST))
                     .andExpect(status().isBadRequest());
 
-            verify(transferService, never()).create(any(), any());
+            verify(transferService, never()).create(any(), any(), any());
         }
 
         @ParameterizedTest
@@ -253,7 +254,7 @@ class TransferControllerTest {
                     .content(VALID_REQUEST))
                     .andExpect(status().isBadRequest());
 
-            verify(transferService, never()).create(any(), any());
+            verify(transferService, never()).create(any(), any(), any());
         }
     }
 
@@ -267,7 +268,7 @@ class TransferControllerTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.sourceAccountNumber").exists());
 
-            verify(transferService, never()).create(any(), any());
+            verify(transferService, never()).create(any(), any(), any());
         }
 
         @ParameterizedTest
@@ -285,7 +286,7 @@ class TransferControllerTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.amount").exists());
 
-            verify(transferService, never()).create(any(), any());
+            verify(transferService, never()).create(any(), any(), any());
         }
 
         @Test
@@ -293,7 +294,7 @@ class TransferControllerTest {
             mockMvc.perform(postTransfer("{ not json"))
                     .andExpect(status().isBadRequest());
 
-            verify(transferService, never()).create(any(), any());
+            verify(transferService, never()).create(any(), any(), any());
         }
     }
 
@@ -302,17 +303,29 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnTransfer() throws Exception {
-            when(transferService.findById(TRANSFER_ID)).thenReturn(response(TransferStatus.PENDING));
+            when(transferService.findById(TRANSFER_ID, ANA)).thenReturn(response(TransferStatus.PENDING));
 
             mockMvc.perform(get("/transfers/{id}", TRANSFER_ID).with(user()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.id").value(TRANSFER_ID.toString()))
-                    .andExpect(jsonPath("$.status").value("PENDING"));
+                    .andExpect(jsonPath("$.status").value("PENDING"))
+                    .andExpect(jsonPath("$.ownerId").doesNotExist());
+        }
+
+        /** O controller passa o sub do token de quem pergunta: o Bruno procura a transferência da Ana e recebe 404. */
+        @Test
+        void shouldReturnNotFoundForTransferOfAnotherUser() throws Exception {
+            String bruno = "00000000-0000-0000-0003-000000000002";
+            when(transferService.findById(TRANSFER_ID, bruno)).thenThrow(new TransferNotFoundException(TRANSFER_ID));
+
+            mockMvc.perform(get("/transfers/{id}", TRANSFER_ID).with(jwt().jwt(token -> token.subject(bruno))))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.detail").value("Transfer not found: " + TRANSFER_ID));
         }
 
         @Test
         void shouldReturnFailedTransferWithCodeAndReason() throws Exception {
-            when(transferService.findById(TRANSFER_ID))
+            when(transferService.findById(TRANSFER_ID, ANA))
                     .thenReturn(failed(FailureCode.ACCOUNT_INACTIVE, "Account is not active"));
 
             mockMvc.perform(get("/transfers/{id}", TRANSFER_ID).with(user()))
@@ -324,7 +337,7 @@ class TransferControllerTest {
 
         @Test
         void shouldReturnNotFound() throws Exception {
-            when(transferService.findById(TRANSFER_ID)).thenThrow(new TransferNotFoundException(TRANSFER_ID));
+            when(transferService.findById(TRANSFER_ID, ANA)).thenThrow(new TransferNotFoundException(TRANSFER_ID));
 
             mockMvc.perform(get("/transfers/{id}", TRANSFER_ID).with(user()))
                     .andExpect(status().isNotFound())
@@ -336,7 +349,7 @@ class TransferControllerTest {
             mockMvc.perform(get("/transfers/{id}", "abc").with(user()))
                     .andExpect(status().isBadRequest());
 
-            verify(transferService, never()).findById(any());
+            verify(transferService, never()).findById(any(), any());
         }
     }
 
@@ -351,7 +364,7 @@ class TransferControllerTest {
                     .andExpect(jsonPath("$.status").value(401))
                     .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
 
-            verify(transferService, never()).findById(any());
+            verify(transferService, never()).findById(any(), any());
         }
 
         /** Sem token, o POST recebe 401 e não 403: o CSRF está desligado, porque não existe sessão nem cookie. */
@@ -364,7 +377,7 @@ class TransferControllerTest {
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
 
-            verify(transferService, never()).create(any(), any());
+            verify(transferService, never()).create(any(), any(), any());
         }
 
         /** O token passa pelo JwtDecoder (mockado) e pelo filtro de verdade, e nenhuma sessão HTTP é criada. */
@@ -376,7 +389,7 @@ class TransferControllerTest {
                     .issuedAt(Instant.now())
                     .expiresAt(Instant.now().plusSeconds(300))
                     .build());
-            when(transferService.findById(TRANSFER_ID)).thenReturn(response(TransferStatus.COMPLETED));
+            when(transferService.findById(TRANSFER_ID, ANA)).thenReturn(response(TransferStatus.COMPLETED));
 
             mockMvc.perform(get("/transfers/{id}", TRANSFER_ID).header(HttpHeaders.AUTHORIZATION, "Bearer keycloak-token"))
                     .andExpect(status().isOk())

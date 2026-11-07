@@ -47,6 +47,8 @@ import com.matilha.transfer.repository.TransferRepository;
 @ExtendWith(MockitoExtension.class)
 class TransferServiceTest {
 
+    private static final String ANA = "00000000-0000-0000-0003-000000000001";
+    private static final String BRUNO = "00000000-0000-0000-0003-000000000002";
     private static final UUID KEY = UUID.fromString("3f1c2a9e-7b4d-4c1a-9e2f-5a6b7c8d9e01");
     private static final UUID TRANSFER_ID = UUID.fromString("8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d");
     private static final String SOURCE = "10001";
@@ -113,7 +115,7 @@ class TransferServiceTest {
 
         @Test
         void shouldCompleteTransferWhenAccountAccepts() {
-            TransferResponseDto response = transferService.create(KEY, REQUEST);
+            TransferResponseDto response = transferService.create(KEY, REQUEST, ANA);
 
             assertThat(response.id()).isEqualTo(TRANSFER_ID);
             assertThat(response.status()).isEqualTo(TransferStatus.COMPLETED);
@@ -125,7 +127,7 @@ class TransferServiceTest {
 
         @Test
         void shouldSavePendingBeforeCallingAccountAndCompleteAfter() {
-            transferService.create(KEY, REQUEST);
+            transferService.create(KEY, REQUEST, ANA);
 
             InOrder order = inOrder(transferRepository, accountClient, transferFinisher);
             order.verify(transferRepository).save(any(Transfer.class));
@@ -137,20 +139,30 @@ class TransferServiceTest {
 
         @Test
         void shouldSendTransferIdAndDataToAccount() {
-            transferService.create(KEY, REQUEST);
+            transferService.create(KEY, REQUEST, ANA);
 
             ArgumentCaptor<AccountTransferRequestDto> captor = ArgumentCaptor.forClass(AccountTransferRequestDto.class);
             verify(accountClient).transfer(captor.capture());
             AccountTransferRequestDto sent = captor.getValue();
             assertThat(sent.transferId()).isEqualTo(TRANSFER_ID);
+            assertThat(sent.ownerId()).isEqualTo(ANA);
             assertThat(sent.sourceAccountNumber()).isEqualTo(SOURCE);
             assertThat(sent.targetAccountNumber()).isEqualTo(TARGET);
             assertThat(sent.amount()).isEqualByComparingTo("250.50");
         }
 
         @Test
+        void shouldSavePendingTransferWithTheOwner() {
+            transferService.create(KEY, REQUEST, ANA);
+
+            ArgumentCaptor<Transfer> captor = ArgumentCaptor.forClass(Transfer.class);
+            verify(transferRepository).save(captor.capture());
+            assertThat(captor.getValue().getOwnerId()).isEqualTo(ANA);
+        }
+
+        @Test
         void shouldNotSendIdempotencyKeyAsTransferId() {
-            transferService.create(KEY, REQUEST);
+            transferService.create(KEY, REQUEST, ANA);
 
             ArgumentCaptor<AccountTransferRequestDto> captor = ArgumentCaptor.forClass(AccountTransferRequestDto.class);
             verify(accountClient).transfer(captor.capture());
@@ -171,7 +183,7 @@ class TransferServiceTest {
 
         @Test
         void shouldFailTransferWithCodeAndReason() {
-            TransferResponseDto response = transferService.create(KEY, REQUEST);
+            TransferResponseDto response = transferService.create(KEY, REQUEST, ANA);
 
             assertThat(response.status()).isEqualTo(TransferStatus.FAILED);
             assertThat(response.failureCode()).isEqualTo(FailureCode.INSUFFICIENT_BALANCE);
@@ -180,7 +192,7 @@ class TransferServiceTest {
 
         @Test
         void shouldPassTheCodeAndReasonGivenByAccountToTheFinisher() {
-            transferService.create(KEY, REQUEST);
+            transferService.create(KEY, REQUEST, ANA);
 
             verify(transferFinisher).fail(any(Transfer.class), eq(FailureCode.INSUFFICIENT_BALANCE),
                     eq("Insufficient balance"));
@@ -201,7 +213,7 @@ class TransferServiceTest {
 
         @Test
         void shouldKeepTransferPendingWithoutThrowing() {
-            TransferResponseDto response = transferService.create(KEY, REQUEST);
+            TransferResponseDto response = transferService.create(KEY, REQUEST, ANA);
 
             assertThat(response.id()).isEqualTo(TRANSFER_ID);
             assertThat(response.status()).isEqualTo(TransferStatus.PENDING);
@@ -210,7 +222,7 @@ class TransferServiceTest {
 
         @Test
         void shouldNeitherFinishNorSaveAgain() {
-            transferService.create(KEY, REQUEST);
+            transferService.create(KEY, REQUEST, ANA);
 
             verify(transferFinisher, never()).complete(any());
             verify(transferFinisher, never()).fail(any(), any(), any());
@@ -226,7 +238,7 @@ class TransferServiceTest {
             saveBehavesLikeDatabase();
             when(accountClient.transfer(any())).thenThrow(new IllegalStateException("bug"));
 
-            assertThatThrownBy(() -> transferService.create(KEY, REQUEST))
+            assertThatThrownBy(() -> transferService.create(KEY, REQUEST, ANA))
                     .isInstanceOf(IllegalStateException.class);
             assertThat(savedStatuses).containsExactly(TransferStatus.PENDING);
             verify(transferFinisher, never()).complete(any());
@@ -244,7 +256,7 @@ class TransferServiceTest {
                     new ObjectOptimisticLockingFailureException(Transfer.class, TRANSFER_ID);
             when(transferFinisher.complete(any(Transfer.class))).thenThrow(conflict);
 
-            assertThatThrownBy(() -> transferService.create(KEY, REQUEST)).isSameAs(conflict);
+            assertThatThrownBy(() -> transferService.create(KEY, REQUEST, ANA)).isSameAs(conflict);
             verify(transferFinisher, never()).fail(any(), any(), any());
         }
     }
@@ -253,7 +265,7 @@ class TransferServiceTest {
     class Replay {
 
         private Transfer existing(TransferStatus status) {
-            Transfer transfer = new Transfer(KEY, SOURCE, TARGET, new BigDecimal("250.50"));
+            Transfer transfer = new Transfer(ANA, KEY, SOURCE, TARGET, new BigDecimal("250.50"));
             ReflectionTestUtils.setField(transfer, "id", TRANSFER_ID);
             if (status == TransferStatus.COMPLETED) {
                 transfer.complete();
@@ -268,7 +280,7 @@ class TransferServiceTest {
         void shouldReturnExistingTransferInItsCurrentState(TransferStatus status) {
             when(transferRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existing(status)));
 
-            TransferResponseDto response = transferService.create(KEY, REQUEST);
+            TransferResponseDto response = transferService.create(KEY, REQUEST, ANA);
 
             assertThat(response.id()).isEqualTo(TRANSFER_ID);
             assertThat(response.status()).isEqualTo(status);
@@ -278,7 +290,7 @@ class TransferServiceTest {
         void shouldNotCallAccountNorSaveAgain() {
             when(transferRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existing(TransferStatus.COMPLETED)));
 
-            transferService.create(KEY, REQUEST);
+            transferService.create(KEY, REQUEST, ANA);
 
             verify(accountClient, never()).transfer(any());
             verify(transferRepository, never()).save(any());
@@ -288,7 +300,7 @@ class TransferServiceTest {
         void shouldKeepFailureReasonOfFailedTransfer() {
             when(transferRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existing(TransferStatus.FAILED)));
 
-            TransferResponseDto response = transferService.create(KEY, REQUEST);
+            TransferResponseDto response = transferService.create(KEY, REQUEST, ANA);
 
             assertThat(response.failureReason()).isEqualTo("Insufficient balance");
         }
@@ -299,7 +311,7 @@ class TransferServiceTest {
             when(transferRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existing(TransferStatus.COMPLETED)));
 
             TransferResponseDto response = transferService.create(KEY,
-                    new CreateTransferRequestDto(SOURCE, TARGET, new BigDecimal(amount)));
+                    new CreateTransferRequestDto(SOURCE, TARGET, new BigDecimal(amount)), ANA);
 
             assertThat(response.id()).isEqualTo(TRANSFER_ID);
         }
@@ -309,7 +321,22 @@ class TransferServiceTest {
             when(transferRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existing(TransferStatus.COMPLETED)));
             CreateTransferRequestDto different = new CreateTransferRequestDto(SOURCE, TARGET, new BigDecimal("999.00"));
 
-            assertThatThrownBy(() -> transferService.create(KEY, different))
+            assertThatThrownBy(() -> transferService.create(KEY, different, ANA))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Idempotency key already used with different data");
+            verify(accountClient, never()).transfer(any());
+            verify(transferRepository, never()).save(any());
+        }
+
+        /**
+         * A Idempotency-Key é única na tabela inteira, não por usuário. Sem o isOwnedBy no replay, o Bruno mandando
+         * a mesma chave e os mesmos dados de uma transferência da Ana receberia a transferência dela.
+         */
+        @Test
+        void shouldRejectSameKeyFromAnotherUserWithoutLeakingTheTransfer() {
+            when(transferRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existing(TransferStatus.COMPLETED)));
+
+            assertThatThrownBy(() -> transferService.create(KEY, REQUEST, BRUNO))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Idempotency key already used with different data");
             verify(accountClient, never()).transfer(any());
@@ -321,7 +348,7 @@ class TransferServiceTest {
             when(transferRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(existing(TransferStatus.COMPLETED)));
             CreateTransferRequestDto different = new CreateTransferRequestDto(SOURCE, "10003", new BigDecimal("250.50"));
 
-            assertThatThrownBy(() -> transferService.create(KEY, different))
+            assertThatThrownBy(() -> transferService.create(KEY, different, ANA))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Idempotency key already used with different data");
         }
@@ -331,7 +358,7 @@ class TransferServiceTest {
     class Race {
 
         private Transfer winner(String target) {
-            Transfer transfer = new Transfer(KEY, SOURCE, target, new BigDecimal("250.50"));
+            Transfer transfer = new Transfer(ANA, KEY, SOURCE, target, new BigDecimal("250.50"));
             ReflectionTestUtils.setField(transfer, "id", TRANSFER_ID);
             return transfer;
         }
@@ -343,7 +370,7 @@ class TransferServiceTest {
             when(transferRepository.save(any(Transfer.class)))
                     .thenThrow(new DataIntegrityViolationException("uk_transfers_idempotency_key"));
 
-            TransferResponseDto response = transferService.create(KEY, REQUEST);
+            TransferResponseDto response = transferService.create(KEY, REQUEST, ANA);
 
             assertThat(response.id()).isEqualTo(TRANSFER_ID);
             assertThat(response.status()).isEqualTo(TransferStatus.PENDING);
@@ -357,7 +384,7 @@ class TransferServiceTest {
             when(transferRepository.save(any(Transfer.class)))
                     .thenThrow(new DataIntegrityViolationException("uk_transfers_idempotency_key"));
 
-            assertThatThrownBy(() -> transferService.create(KEY, REQUEST))
+            assertThatThrownBy(() -> transferService.create(KEY, REQUEST, ANA))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Idempotency key already used with different data");
             verify(accountClient, never()).transfer(any());
@@ -369,7 +396,7 @@ class TransferServiceTest {
             when(transferRepository.findByIdempotencyKey(KEY)).thenReturn(Optional.empty());
             when(transferRepository.save(any(Transfer.class))).thenThrow(otherViolation);
 
-            assertThatThrownBy(() -> transferService.create(KEY, REQUEST)).isSameAs(otherViolation);
+            assertThatThrownBy(() -> transferService.create(KEY, REQUEST, ANA)).isSameAs(otherViolation);
             verify(accountClient, never()).transfer(any());
         }
     }
@@ -378,24 +405,57 @@ class TransferServiceTest {
     class FindById {
 
         @Test
-        void shouldReturnTransferAsDto() {
-            Transfer transfer = new Transfer(KEY, SOURCE, TARGET, new BigDecimal("250.50"));
+        void shouldReturnOwnTransferAsDto() {
+            Transfer transfer = new Transfer(ANA, KEY, SOURCE, TARGET, new BigDecimal("250.50"));
             ReflectionTestUtils.setField(transfer, "id", TRANSFER_ID);
-            when(transferRepository.findById(TRANSFER_ID)).thenReturn(Optional.of(transfer));
+            when(transferRepository.findByIdAndOwnerId(TRANSFER_ID, ANA)).thenReturn(Optional.of(transfer));
 
-            TransferResponseDto response = transferService.findById(TRANSFER_ID);
+            TransferResponseDto response = transferService.findById(TRANSFER_ID, ANA);
 
             assertThat(response.id()).isEqualTo(TRANSFER_ID);
             assertThat(response.status()).isEqualTo(TransferStatus.PENDING);
+            verify(transferRepository, never()).findById(any());
         }
 
         @Test
         void shouldThrowWhenNotFound() {
-            when(transferRepository.findById(TRANSFER_ID)).thenReturn(Optional.empty());
+            when(transferRepository.findByIdAndOwnerId(TRANSFER_ID, ANA)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> transferService.findById(TRANSFER_ID))
+            assertThatThrownBy(() -> transferService.findById(TRANSFER_ID, ANA))
                     .isInstanceOf(TransferNotFoundException.class)
                     .hasMessage("Transfer not found: " + TRANSFER_ID);
+        }
+
+        /** A transferência de outra pessoa dá o mesmo 404 de uma inexistente. */
+        @Test
+        void shouldThrowNotFoundForTransferOfAnotherUser() {
+            when(transferRepository.findByIdAndOwnerId(TRANSFER_ID, BRUNO)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> transferService.findById(TRANSFER_ID, BRUNO))
+                    .isInstanceOf(TransferNotFoundException.class)
+                    .hasMessage("Transfer not found: " + TRANSFER_ID);
+        }
+    }
+
+    /**
+     * O reconciliador chama o process() sem nenhum usuário logado. O dono enviado ao account vem da
+     * Transfer gravada, e não de um token.
+     */
+    @Nested
+    class Reprocess {
+
+        @Test
+        void shouldSendTheStoredOwnerWhenReprocessingWithoutToken() {
+            finisherCompletes();
+            Transfer pending = new Transfer(ANA, KEY, SOURCE, TARGET, new BigDecimal("250.50"));
+            ReflectionTestUtils.setField(pending, "id", TRANSFER_ID);
+
+            transferService.process(pending);
+
+            ArgumentCaptor<AccountTransferRequestDto> captor = ArgumentCaptor.forClass(AccountTransferRequestDto.class);
+            verify(accountClient).transfer(captor.capture());
+            assertThat(captor.getValue().ownerId()).isEqualTo(ANA);
+            assertThat(captor.getValue().transferId()).isEqualTo(TRANSFER_ID);
         }
     }
 
@@ -406,7 +466,7 @@ class TransferServiceTest {
         void shouldRejectSameAccountsWithoutSavingOrCallingAccount() {
             CreateTransferRequestDto sameAccounts = new CreateTransferRequestDto(SOURCE, SOURCE, new BigDecimal("10.00"));
 
-            assertThatThrownBy(() -> transferService.create(KEY, sameAccounts))
+            assertThatThrownBy(() -> transferService.create(KEY, sameAccounts, ANA))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Source and target accounts must be different");
             verify(transferRepository, never()).save(any());

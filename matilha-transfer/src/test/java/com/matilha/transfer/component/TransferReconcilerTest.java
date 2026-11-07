@@ -46,7 +46,8 @@ class TransferReconcilerTest {
     }
 
     private static Transfer pendingTransfer() {
-        Transfer transfer = new Transfer(UUID.randomUUID(), "10001", "10002", new BigDecimal("10.00"));
+        Transfer transfer = new Transfer("00000000-0000-0000-0003-000000000001", UUID.randomUUID(), "10001", "10002",
+                new BigDecimal("10.00"));
         ReflectionTestUtils.setField(transfer, "id", UUID.randomUUID());
         return transfer;
     }

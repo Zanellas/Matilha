@@ -33,33 +33,34 @@ public class TransferService {
     private final AccountClient accountClient;
     private final TransferFinisher transferFinisher;
 
-    public TransferResponseDto create(UUID idempotencyKey, CreateTransferRequestDto request) {
+    public TransferResponseDto create(UUID idempotencyKey, CreateTransferRequestDto request, String ownerId) {
         Optional<Transfer> existing = transferRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
-            return replay(existing.get(), request);
+            return replay(existing.get(), request, ownerId);
         }
 
         Transfer transfer;
         try {
-            transfer = transferRepository.save(new Transfer(idempotencyKey, request.sourceAccountNumber(),
+            transfer = transferRepository.save(new Transfer(ownerId, idempotencyKey, request.sourceAccountNumber(),
                     request.targetAccountNumber(), request.amount()));
         } catch (DataIntegrityViolationException ex) {
             Transfer winner = transferRepository.findByIdempotencyKey(idempotencyKey).orElseThrow(() -> ex);
-            return replay(winner, request);
+            return replay(winner, request, ownerId);
         }
 
         return TransferResponseDto.from(process(transfer));
     }
 
-    private TransferResponseDto replay(Transfer existing, CreateTransferRequestDto request) {
-        if (!existing.matches(request.sourceAccountNumber(), request.targetAccountNumber(), request.amount())) {
+    private TransferResponseDto replay(Transfer existing, CreateTransferRequestDto request, String ownerId) {
+        if (!existing.isOwnedBy(ownerId)
+                || !existing.matches(request.sourceAccountNumber(), request.targetAccountNumber(), request.amount())) {
             throw new BusinessException("Idempotency key already used with different data");
         }
         return TransferResponseDto.from(existing);
     }
 
-    public TransferResponseDto findById(UUID id) {
-        return transferRepository.findById(id)
+    public TransferResponseDto findById(UUID id, String ownerId) {
+        return transferRepository.findByIdAndOwnerId(id, ownerId)
                 .map(TransferResponseDto::from)
                 .orElseThrow(() -> new TransferNotFoundException(id));
     }
@@ -67,6 +68,7 @@ public class TransferService {
     public Transfer process(Transfer transfer) {
         AccountTransferRequestDto accountRequest = new AccountTransferRequestDto(
                 transfer.getId(),
+                transfer.getOwnerId(),
                 transfer.getSourceAccountNumber(),
                 transfer.getTargetAccountNumber(),
                 transfer.getAmount());

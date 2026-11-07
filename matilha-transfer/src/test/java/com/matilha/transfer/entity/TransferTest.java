@@ -18,6 +18,7 @@ import com.matilha.transfer.exception.BusinessException;
 
 class TransferTest {
 
+    private static final String OWNER = "00000000-0000-0000-0003-000000000001";
     private static final UUID KEY = UUID.fromString("3f1c2a9e-7b4d-4c1a-9e2f-5a6b7c8d9e01");
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
@@ -27,7 +28,7 @@ class TransferTest {
 
     @BeforeEach
     void setUp() {
-        transfer = new Transfer(KEY, SOURCE, TARGET, AMOUNT);
+        transfer = new Transfer(OWNER, KEY, SOURCE, TARGET, AMOUNT);
     }
 
     @Nested
@@ -35,6 +36,7 @@ class TransferTest {
 
         @Test
         void shouldCreatePendingTransfer() {
+            assertThat(transfer.getOwnerId()).isEqualTo(OWNER);
             assertThat(transfer.getIdempotencyKey()).isEqualTo(KEY);
             assertThat(transfer.getSourceAccountNumber()).isEqualTo(SOURCE);
             assertThat(transfer.getTargetAccountNumber()).isEqualTo(TARGET);
@@ -49,9 +51,26 @@ class TransferTest {
             assertThat(transfer.getVersion()).isNull();
         }
 
+        /** O dono é gravado para o reconciliador reenviar sem token: uma transferência nova nunca nasce sem ele. */
+        @ParameterizedTest
+        @NullAndEmptySource
+        @ValueSource(strings = { "   " })
+        void shouldRejectBlankOwner(String ownerId) {
+            assertThatThrownBy(() -> new Transfer(ownerId, KEY, SOURCE, TARGET, AMOUNT))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("ownerId must not be blank");
+        }
+
+        @Test
+        void shouldBeOwnedOnlyByTheUserWhoCreatedIt() {
+            assertThat(transfer.isOwnedBy(OWNER)).isTrue();
+            assertThat(transfer.isOwnedBy("00000000-0000-0000-0003-000000000002")).isFalse();
+            assertThat(transfer.isOwnedBy(null)).isFalse();
+        }
+
         @Test
         void shouldRejectNullIdempotencyKey() {
-            assertThatThrownBy(() -> new Transfer(null, SOURCE, TARGET, AMOUNT))
+            assertThatThrownBy(() -> new Transfer(OWNER, null, SOURCE, TARGET, AMOUNT))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("idempotencyKey must not be null");
         }
@@ -60,7 +79,7 @@ class TransferTest {
         @NullAndEmptySource
         @ValueSource(strings = { "   " })
         void shouldRejectBlankSourceAccountNumber(String source) {
-            assertThatThrownBy(() -> new Transfer(KEY, source, TARGET, AMOUNT))
+            assertThatThrownBy(() -> new Transfer(OWNER, KEY, source, TARGET, AMOUNT))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("sourceAccountNumber must not be blank");
         }
@@ -69,14 +88,14 @@ class TransferTest {
         @NullAndEmptySource
         @ValueSource(strings = { "   " })
         void shouldRejectBlankTargetAccountNumber(String target) {
-            assertThatThrownBy(() -> new Transfer(KEY, SOURCE, target, AMOUNT))
+            assertThatThrownBy(() -> new Transfer(OWNER, KEY, SOURCE, target, AMOUNT))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("targetAccountNumber must not be blank");
         }
 
         @Test
         void shouldRejectSameSourceAndTarget() {
-            assertThatThrownBy(() -> new Transfer(KEY, SOURCE, SOURCE, AMOUNT))
+            assertThatThrownBy(() -> new Transfer(OWNER, KEY, SOURCE, SOURCE, AMOUNT))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Source and target accounts must be different");
         }
@@ -87,21 +106,21 @@ class TransferTest {
 
         @Test
         void shouldAcceptAmountWithTrailingZeros() {
-            Transfer trailingZeros = new Transfer(KEY, SOURCE, TARGET, new BigDecimal("10.500"));
+            Transfer trailingZeros = new Transfer(OWNER, KEY, SOURCE, TARGET, new BigDecimal("10.500"));
 
             assertThat(trailingZeros.getAmount()).isEqualByComparingTo("10.50");
         }
 
         @Test
         void shouldAcceptSmallestPositiveAmount() {
-            Transfer smallest = new Transfer(KEY, SOURCE, TARGET, new BigDecimal("0.01"));
+            Transfer smallest = new Transfer(OWNER, KEY, SOURCE, TARGET, new BigDecimal("0.01"));
 
             assertThat(smallest.getAmount()).isEqualByComparingTo("0.01");
         }
 
         @Test
         void shouldRejectNullAmount() {
-            assertThatThrownBy(() -> new Transfer(KEY, SOURCE, TARGET, null))
+            assertThatThrownBy(() -> new Transfer(OWNER, KEY, SOURCE, TARGET, null))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Amount must be positive");
         }
@@ -109,7 +128,7 @@ class TransferTest {
         @ParameterizedTest
         @ValueSource(strings = { "0", "0.00", "-10.00" })
         void shouldRejectZeroOrNegativeAmount(String amount) {
-            assertThatThrownBy(() -> new Transfer(KEY, SOURCE, TARGET, new BigDecimal(amount)))
+            assertThatThrownBy(() -> new Transfer(OWNER, KEY, SOURCE, TARGET, new BigDecimal(amount)))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Amount must be positive");
         }
@@ -117,7 +136,7 @@ class TransferTest {
         @ParameterizedTest
         @ValueSource(strings = { "10.555", "0.001" })
         void shouldRejectAmountWithMoreThanTwoDecimalPlaces(String amount) {
-            assertThatThrownBy(() -> new Transfer(KEY, SOURCE, TARGET, new BigDecimal(amount)))
+            assertThatThrownBy(() -> new Transfer(OWNER, KEY, SOURCE, TARGET, new BigDecimal(amount)))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Amount must have at most 2 decimal places");
         }

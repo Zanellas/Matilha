@@ -51,7 +51,7 @@ class TransferFinisherTest {
 
     /** Como no fluxo real: a PENDING já foi gravada numa transação anterior e chega aqui desanexada. */
     private Transfer savedPending() {
-        return transferRepository.save(new Transfer(UUID.randomUUID(), SOURCE, TARGET, new BigDecimal("250.50")));
+        return transferRepository.save(new Transfer("00000000-0000-0000-0003-000000000001", UUID.randomUUID(), SOURCE, TARGET, new BigDecimal("250.50")));
     }
 
     private TransferStatus statusInDatabase(UUID transferId) {

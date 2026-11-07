@@ -39,7 +39,8 @@ class AccountClientTest {
 
     private static final UUID TRANSFER_ID = UUID.fromString("8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d");
     private static final AccountTransferRequestDto REQUEST =
-            new AccountTransferRequestDto(TRANSFER_ID, "10001", "10002", new BigDecimal("250.50"));
+            new AccountTransferRequestDto(TRANSFER_ID, "00000000-0000-0000-0003-000000000001", "10001", "10002",
+                    new BigDecimal("250.50"));
 
     private static final String SUCCESS_BODY = """
             {
@@ -149,6 +150,7 @@ class AccountClientTest {
             assertThat(receivedContentType).startsWith("application/json");
             assertThat(receivedBody)
                     .contains("\"transferId\":\"8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d\"")
+                    .contains("\"ownerId\":\"00000000-0000-0000-0003-000000000001\"")
                     .contains("\"sourceAccountNumber\":\"10001\"")
                     .contains("\"targetAccountNumber\":\"10002\"")
                     .contains("\"amount\":250.50");

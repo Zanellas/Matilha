@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,8 +33,9 @@ public class TransferController {
     @PostMapping
     public ResponseEntity<TransferResponseDto> create(
             @RequestHeader("Idempotency-Key") UUID idempotencyKey,
-            @RequestBody @Valid CreateTransferRequestDto request) {
-        TransferResponseDto response = transferService.create(idempotencyKey, request);
+            @RequestBody @Valid CreateTransferRequestDto request,
+            Authentication authentication) {
+        TransferResponseDto response = transferService.create(idempotencyKey, request, authentication.getName());
         if (response.status() == TransferStatus.FAILED) {
             throw new TransferFailedException(response);
         }
@@ -43,8 +45,8 @@ public class TransferController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<TransferResponseDto> findById(@PathVariable UUID id) {
-        return ResponseEntity.ok(transferService.findById(id));
+    public ResponseEntity<TransferResponseDto> findById(@PathVariable UUID id, Authentication authentication) {
+        return ResponseEntity.ok(transferService.findById(id, authentication.getName()));
     }
 
     private static HttpStatus statusFor(TransferStatus status) {

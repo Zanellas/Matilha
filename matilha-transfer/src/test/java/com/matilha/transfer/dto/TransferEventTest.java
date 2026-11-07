@@ -27,7 +27,7 @@ class TransferEventTest {
 
     /** Simula uma transferência já salva, com o id que o Hibernate gera. */
     private static Transfer savedTransfer(String amount) {
-        Transfer transfer = new Transfer(KEY, SOURCE, TARGET, new BigDecimal(amount));
+        Transfer transfer = new Transfer("00000000-0000-0000-0003-000000000001", KEY, SOURCE, TARGET, new BigDecimal(amount));
         ReflectionTestUtils.setField(transfer, "id", TRANSFER_ID);
         return transfer;
     }

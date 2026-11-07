@@ -39,6 +39,7 @@ import com.matilha.transfer.service.TransferService;
 @Import(TestcontainersConfiguration.class)
 class TransferPersistenceTest {
 
+    private static final String OWNER = "00000000-0000-0000-0003-000000000001";
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
 
@@ -64,7 +65,7 @@ class TransferPersistenceTest {
     }
 
     private static Transfer newTransfer(UUID key, String amount) {
-        return new Transfer(key, SOURCE, TARGET, new BigDecimal(amount));
+        return new Transfer(OWNER, key, SOURCE, TARGET, new BigDecimal(amount));
     }
 
     private Transfer reload(UUID id) {
@@ -145,6 +146,25 @@ class TransferPersistenceTest {
                     .get()
                     .extracting(Transfer::getId)
                     .isEqualTo(saved.getId());
+        }
+
+        /** O dono vai para a coluna owner_id da V7: é dali que o reconciliador o lê, sem token. */
+        @Test
+        void shouldPersistOwner() {
+            Transfer saved = transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
+
+            assertThat(reload(saved.getId()).getOwnerId()).isEqualTo(OWNER);
+            assertThat(jdbcTemplate.queryForObject("SELECT owner_id FROM transfers WHERE id = ?",
+                    String.class, saved.getId())).isEqualTo(OWNER);
+        }
+
+        @Test
+        void shouldFindByIdOnlyForTheOwner() {
+            Transfer saved = transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
+
+            assertThat(transferRepository.findByIdAndOwnerId(saved.getId(), OWNER)).isPresent();
+            assertThat(transferRepository.findByIdAndOwnerId(saved.getId(), "00000000-0000-0000-0003-000000000002"))
+                    .isEmpty();
         }
 
         @Test

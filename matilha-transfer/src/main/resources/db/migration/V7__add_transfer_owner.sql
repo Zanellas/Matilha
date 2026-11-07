@@ -1,0 +1,1 @@
+ALTER TABLE transfers ADD COLUMN owner_id VARCHAR(255);
