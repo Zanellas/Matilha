@@ -8,8 +8,14 @@
   "accessTokenLifespan": 300,
   "roles": {
     "realm": [
-      { "name": "customer", "description": "Cliente: vê e movimenta só as próprias contas" },
-      { "name": "admin", "description": "Suporte: lista todas as contas, bloqueia e desbloqueia" }
+      {
+        "name": "customer",
+        "description": "Cliente: vê e movimenta só as próprias contas"
+      },
+      {
+        "name": "admin",
+        "description": "Suporte: lista todas as contas, bloqueia e desbloqueia"
+      }
     ]
   },
   "clients": [
@@ -24,7 +30,9 @@
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["https://oauth.pstmn.io/v1/callback"],
+      "redirectUris": [
+        "https://oauth.pstmn.io/v1/callback"
+      ],
       "webOrigins": [],
       "attributes": {
         "pkce.code.challenge.method": "S256"
@@ -80,8 +88,16 @@
       "email": "ana.silva@example.com",
       "emailVerified": true,
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "ana123", "temporary": false }],
-      "realmRoles": ["customer"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ana123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "customer"
+      ]
     },
     {
       "id": "00000000-0000-0000-0003-000000000002",
@@ -91,8 +107,16 @@
       "email": "bruno.costa@example.com",
       "emailVerified": true,
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "bruno123", "temporary": false }],
-      "realmRoles": ["customer"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bruno123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "customer"
+      ]
     },
     {
       "id": "00000000-0000-0000-0003-000000000003",
@@ -102,8 +126,16 @@
       "email": "suporte@example.com",
       "emailVerified": true,
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "suporte123", "temporary": false }],
-      "realmRoles": ["admin"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "suporte123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin"
+      ]
     }
   ]
 }

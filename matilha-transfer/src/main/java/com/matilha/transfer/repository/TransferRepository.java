@@ -12,17 +12,17 @@ import com.matilha.transfer.entity.Transfer;
 
 public interface TransferRepository extends JpaRepository<Transfer, UUID> {
 
-    Optional<Transfer> findByIdempotencyKey(UUID idempotencyKey);
+  Optional<Transfer> findByIdempotencyKey(UUID idempotencyKey);
 
-    @Query(value = """
-            SELECT * FROM transfers
-            WHERE status = 'PENDING'
-              AND created_at < :createdBefore
-              AND (claimed_until IS NULL OR claimed_until < :now)
-            ORDER BY created_at
-            LIMIT :limit
-            FOR UPDATE SKIP LOCKED
-            """, nativeQuery = true)
-    List<Transfer> findPendingToClaim(Instant createdBefore, Instant now, int limit);
+  @Query(value = """
+      SELECT * FROM transfers
+      WHERE status = 'PENDING'
+        AND created_at < :createdBefore
+        AND (claimed_until IS NULL OR claimed_until < :now)
+      ORDER BY created_at
+      LIMIT :limit
+      FOR UPDATE SKIP LOCKED
+      """, nativeQuery = true)
+  List<Transfer> findPendingToClaim(Instant createdBefore, Instant now, int limit);
 
 }

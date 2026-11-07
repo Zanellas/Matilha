@@ -8,10 +8,10 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 
 import lombok.extern.slf4j.Slf4j;
 
-@Slf4j 
-@RestControllerAdvice 
+@Slf4j
+@RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
-    
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleUnexpected(Exception ex) {
         log.error("Unexpected error", ex);

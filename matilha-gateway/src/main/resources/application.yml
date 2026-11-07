@@ -33,7 +33,7 @@ spring:
     clients:
       connect-timeout: 2s
       read-timeout: 10s
-  
+
   security:
     oauth2:
       resourceserver:

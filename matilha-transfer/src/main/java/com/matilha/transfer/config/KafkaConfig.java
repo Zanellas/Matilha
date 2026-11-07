@@ -7,10 +7,10 @@ import org.springframework.kafka.config.TopicBuilder;
 
 @Configuration
 public class KafkaConfig {
-    
+
     public static final String TRANSFER_EVENTS_TOPIC = "matilha.transfer.events";
 
-    @Bean 
+    @Bean
     NewTopic transferEventsTopi() {
         return TopicBuilder.name(TRANSFER_EVENTS_TOPIC).partitions(3).replicas(1).build();
     }

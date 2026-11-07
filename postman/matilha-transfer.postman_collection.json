@@ -5,18 +5,54 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080" },
-    { "key": "accountUrl", "value": "http://localhost:8081" },
-    { "key": "transferUrl", "value": "http://localhost:8082" },
-    { "key": "notificationUrl", "value": "http://localhost:8083" },
-    { "key": "amount", "value": "100.00" },
-    { "key": "depositId", "value": "" },
-    { "key": "successKey", "value": "" },
-    { "key": "transferId", "value": "" },
-    { "key": "sourceBalanceBefore", "value": "" },
-    { "key": "targetBalanceBefore", "value": "" },
-    { "key": "pendingTransferId", "value": "" },
-    { "key": "failedTransferId", "value": "" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "accountUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "transferUrl",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "notificationUrl",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "amount",
+      "value": "100.00"
+    },
+    {
+      "key": "depositId",
+      "value": ""
+    },
+    {
+      "key": "successKey",
+      "value": ""
+    },
+    {
+      "key": "transferId",
+      "value": ""
+    },
+    {
+      "key": "sourceBalanceBefore",
+      "value": ""
+    },
+    {
+      "key": "targetBalanceBefore",
+      "value": ""
+    },
+    {
+      "key": "pendingTransferId",
+      "value": ""
+    },
+    {
+      "key": "failedTransferId",
+      "value": ""
+    }
   ],
   "item": [
     {
@@ -42,8 +78,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/actuator/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["actuator", "health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
             }
           }
         },
@@ -68,12 +109,25 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"depositId\": \"{{$guid}}\",\n  \"accountNumber\": \"10001\",\n  \"amount\": 1000.00\n}" },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"depositId\": \"{{$guid}}\",\n  \"accountNumber\": \"10001\",\n  \"amount\": 1000.00\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/internal/deposits",
-              "host": ["{{baseUrl}}"],
-              "path": ["internal", "deposits"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "deposits"
+              ]
             }
           }
         },
@@ -98,12 +152,25 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"transferId\": \"{{$guid}}\",\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 1000.00\n}" },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{$guid}}\",\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 1000.00\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/internal/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["internal", "transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "transfers"
+              ]
             }
           }
         }
@@ -132,8 +199,13 @@
             "method": "GET",
             "url": {
               "raw": "{{accountUrl}}/actuator/health",
-              "host": ["{{accountUrl}}"],
-              "path": ["actuator", "health"]
+              "host": [
+                "{{accountUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
             }
           }
         },
@@ -157,8 +229,13 @@
             "method": "GET",
             "url": {
               "raw": "{{transferUrl}}/actuator/health",
-              "host": ["{{transferUrl}}"],
-              "path": ["actuator", "health"]
+              "host": [
+                "{{transferUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
             }
           }
         },
@@ -182,8 +259,13 @@
             "method": "GET",
             "url": {
               "raw": "{{notificationUrl}}/actuator/health",
-              "host": ["{{notificationUrl}}"],
-              "path": ["actuator", "health"]
+              "host": [
+                "{{notificationUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
             }
           }
         },
@@ -218,12 +300,25 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"depositId\": \"{{depositId}}\",\n  \"accountNumber\": \"10001\",\n  \"amount\": 1000.00\n}" },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"depositId\": \"{{depositId}}\",\n  \"accountNumber\": \"10001\",\n  \"amount\": 1000.00\n}"
+            },
             "url": {
               "raw": "{{accountUrl}}/internal/deposits",
-              "host": ["{{accountUrl}}"],
-              "path": ["internal", "deposits"]
+              "host": [
+                "{{accountUrl}}"
+              ],
+              "path": [
+                "internal",
+                "deposits"
+              ]
             }
           }
         },
@@ -245,8 +340,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/accounts/10001",
-              "host": ["{{baseUrl}}"],
-              "path": ["accounts", "10001"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10001"
+              ]
             }
           }
         },
@@ -268,8 +368,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/accounts/10002",
-              "host": ["{{baseUrl}}"],
-              "path": ["accounts", "10002"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10002"
+              ]
             }
           }
         }
@@ -314,18 +419,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{successKey}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{successKey}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": {{amount}}\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -349,18 +468,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{successKey}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{successKey}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": {{amount}}\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -383,18 +516,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{successKey}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{successKey}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 100.0\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -417,18 +564,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{successKey}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{successKey}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 50.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -454,8 +615,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/accounts/10001",
-              "host": ["{{baseUrl}}"],
-              "path": ["accounts", "10001"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10001"
+              ]
             }
           }
         },
@@ -481,8 +647,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/accounts/10002",
-              "host": ["{{baseUrl}}"],
-              "path": ["accounts", "10002"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10002"
+              ]
             }
           }
         }
@@ -511,17 +682,29 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"transferId\": \"{{$guid}}\",\n  \"sourceAccountNumber\": \"10003\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 50.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{accountUrl}}/internal/transfers",
-              "host": ["{{accountUrl}}"],
-              "path": ["internal", "transfers"]
+              "host": [
+                "{{accountUrl}}"
+              ],
+              "path": [
+                "internal",
+                "transfers"
+              ]
             }
           }
         },
@@ -544,8 +727,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/accounts/10009",
-              "host": ["{{baseUrl}}"],
-              "path": ["accounts", "10009"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10009"
+              ]
             }
           }
         },
@@ -574,18 +762,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10003\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 50.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -615,18 +817,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10009\",\n  \"amount\": 10.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -654,18 +870,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10004\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 10.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -693,18 +923,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10005\",\n  \"amount\": 10.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         }
@@ -736,8 +980,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/transfers/{{transferId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers", "{{transferId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers",
+                "{{transferId}}"
+              ]
             }
           }
         },
@@ -766,8 +1015,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/transfers/{{failedTransferId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers", "{{failedTransferId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers",
+                "{{failedTransferId}}"
+              ]
             }
           }
         },
@@ -791,8 +1045,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/transfers/{{$guid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers", "{{$guid}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers",
+                "{{$guid}}"
+              ]
             }
           }
         },
@@ -813,8 +1072,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/transfers/abc",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers", "abc"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers",
+                "abc"
+              ]
             }
           }
         }
@@ -839,17 +1103,28 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 10.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -869,18 +1144,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "abc" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "abc"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 10.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -905,18 +1194,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"1000\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": -10.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -942,18 +1245,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 10.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         }
@@ -999,11 +1316,21 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=10001&size=100",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "10001" },
-                { "key": "size", "value": "100" }
+                {
+                  "key": "accountNumber",
+                  "value": "10001"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
               ]
             }
           }
@@ -1034,11 +1361,21 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=10002&size=100",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "10002" },
-                { "key": "size", "value": "100" }
+                {
+                  "key": "accountNumber",
+                  "value": "10002"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
               ]
             }
           }
@@ -1069,11 +1406,21 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=10003&size=100",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "10003" },
-                { "key": "size", "value": "100" }
+                {
+                  "key": "accountNumber",
+                  "value": "10003"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
               ]
             }
           }
@@ -1099,11 +1446,21 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=10001&size=100",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "10001" },
-                { "key": "size", "value": "100" }
+                {
+                  "key": "accountNumber",
+                  "value": "10001"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
               ]
             }
           }
@@ -1131,10 +1488,17 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=10001",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "10001" }
+                {
+                  "key": "accountNumber",
+                  "value": "10001"
+                }
               ]
             }
           }
@@ -1163,11 +1527,21 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=10001&size=1",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "10001" },
-                { "key": "size", "value": "1" }
+                {
+                  "key": "accountNumber",
+                  "value": "10001"
+                },
+                {
+                  "key": "size",
+                  "value": "1"
+                }
               ]
             }
           }
@@ -1190,11 +1564,21 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=10001&size=500",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "10001" },
-                { "key": "size", "value": "500" }
+                {
+                  "key": "accountNumber",
+                  "value": "10001"
+                },
+                {
+                  "key": "size",
+                  "value": "500"
+                }
               ]
             }
           }
@@ -1221,10 +1605,17 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=99999",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "99999" }
+                {
+                  "key": "accountNumber",
+                  "value": "99999"
+                }
               ]
             }
           }
@@ -1247,8 +1638,12 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ]
             }
           }
         },
@@ -1269,10 +1664,17 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=1000",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "1000" }
+                {
+                  "key": "accountNumber",
+                  "value": "1000"
+                }
               ]
             }
           }
@@ -1294,10 +1696,17 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=abcde",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "abcde" }
+                {
+                  "key": "accountNumber",
+                  "value": "abcde"
+                }
               ]
             }
           }
@@ -1334,18 +1743,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 10.00\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/transfers",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
             }
           }
         },
@@ -1370,8 +1793,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/transfers/{{pendingTransferId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["transfers", "{{pendingTransferId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers",
+                "{{pendingTransferId}}"
+              ]
             }
           }
         },
@@ -1399,11 +1827,21 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/notifications?accountNumber=10001&size=100",
-              "host": ["{{baseUrl}}"],
-              "path": ["notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
               "query": [
-                { "key": "accountNumber", "value": "10001" },
-                { "key": "size", "value": "100" }
+                {
+                  "key": "accountNumber",
+                  "value": "10001"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
               ]
             }
           }

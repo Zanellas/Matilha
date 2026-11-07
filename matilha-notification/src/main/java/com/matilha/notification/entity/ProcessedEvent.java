@@ -51,13 +51,13 @@ public class ProcessedEvent implements Persistable<UUID> {
         return eventId;
     }
 
-    @Override 
+    @Override
     public boolean isNew() {
         return newEntity;
     }
 
-    @PostLoad 
-    @PostPersist 
+    @PostLoad
+    @PostPersist
     void markNotNew() {
         this.newEntity = false;
     }

@@ -1,11 +1,4 @@
-﻿# Apaga o cluster kind do Matilha, com todos os dados dos bancos e do Kafka.
-# Para só pausar, sem perder nada, use: docker stop matilha-control-plane
-#
-# Uso:
-#   .\k8s\destroy.ps1           # pede confirmação
-#   .\k8s\destroy.ps1 -Force    # sem confirmação
-
-param([switch]$Force)
+﻿param([switch]$Force)
 
 $Cluster = "matilha"
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")

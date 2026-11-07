@@ -7,7 +7,6 @@ data:
   TRANSFER_SERVICE_URL: http://transfer:8082
   NOTIFICATION_SERVICE_URL: http://notification:8083
 ---
-# Único Service exposto para fora do cluster: o kind-config.yaml liga a porta 8080 da máquina ao nodePort 30080.
 apiVersion: v1
 kind: Service
 metadata:

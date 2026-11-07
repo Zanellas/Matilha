@@ -61,7 +61,12 @@ spec:
               value: -Xms256m -Xmx512m
           readinessProbe:
             exec:
-              command: ["sh", "-c", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null"]
+              command:
+                [
+                  "sh",
+                  "-c",
+                  "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null",
+                ]
             initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 10

@@ -1,5 +1,3 @@
-# Ferramenta de inspeção, não faz parte do sistema: nenhum serviço depende dela.
-# Acesso: kubectl port-forward svc/kafka-ui 8090:8080 e abra http://localhost:8090
 apiVersion: v1
 kind: Service
 metadata:
