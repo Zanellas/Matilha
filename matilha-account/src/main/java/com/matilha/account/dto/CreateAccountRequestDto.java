@@ -7,9 +7,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 
 public record CreateAccountRequestDto(
-        @NotBlank String holderName,
-        @NotBlank @CPF String holderDocument,
-        @NotBlank @Email String holderEmail,
-        @NotBlank @Pattern(regexp = "\\(?\\d{2}\\)?\\s?\\d{4,5}-?\\d{4}") String holderPhone) {
+                @NotBlank String holderName,
+                @NotBlank @CPF String holderDocument,
+                @NotBlank @Email String holderEmail,
+                @NotBlank @Pattern(regexp = "\\(?\\d{2}\\)?\\s?\\d{4,5}-?\\d{4}") String holderPhone) {
 
 }

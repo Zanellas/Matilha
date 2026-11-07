@@ -23,7 +23,8 @@ public class InternalTransferController {
     private final InternalTransferService transferService;
 
     @PostMapping
-    public ResponseEntity<InternalTransferResponseDto> transfer(@RequestBody @Valid InternalTransferRequestDto request) {
+    public ResponseEntity<InternalTransferResponseDto> transfer(
+            @RequestBody @Valid InternalTransferRequestDto request) {
         return ResponseEntity.ok(transferService.transfer(request));
     }
 }
