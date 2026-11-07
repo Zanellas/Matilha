@@ -17,11 +17,15 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.matilha.account.config.ProblemDetailSecurityHandler;
+import com.matilha.account.config.SecurityConfig;
 import com.matilha.account.dto.InternalTransferRequestDto;
 import com.matilha.account.dto.InternalTransferResponseDto;
 import com.matilha.account.exception.AccountNotFoundException;
@@ -29,7 +33,12 @@ import com.matilha.account.exception.BusinessException;
 import com.matilha.account.exception.ErrorCode;
 import com.matilha.account.service.InternalTransferService;
 
+/**
+ * Com o SecurityConfig de verdade e nenhuma requisição levando token: prova que o /internal/** continua
+ * acessível sem token nesta fase (o transfer chama em nome do sistema, inclusive no reconciliador).
+ */
 @WebMvcTest(InternalTransferController.class)
+@Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class })
 class InternalTransferControllerTest {
 
     private static final UUID TRANSFER_ID = UUID.fromString("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
@@ -48,6 +57,9 @@ class InternalTransferControllerTest {
 
     @MockitoBean
     private InternalTransferService transferService;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
 
     private static String requestWith(String field, String jsonValue) {
         return VALID_REQUEST.replaceFirst("\"" + field + "\": [^,\\n]*", "\"" + field + "\": " + jsonValue);

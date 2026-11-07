@@ -17,11 +17,15 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.matilha.account.config.ProblemDetailSecurityHandler;
+import com.matilha.account.config.SecurityConfig;
 import com.matilha.account.dto.DepositRequestDto;
 import com.matilha.account.dto.DepositResponseDto;
 import com.matilha.account.exception.AccountNotFoundException;
@@ -29,7 +33,12 @@ import com.matilha.account.exception.BusinessException;
 import com.matilha.account.exception.ErrorCode;
 import com.matilha.account.service.DepositService;
 
+/**
+ * Com o SecurityConfig de verdade e nenhuma requisição levando token: o depósito chega do sistema de pagamentos
+ * pela rede interna, sem usuário logado.
+ */
 @WebMvcTest(InternalDepositController.class)
+@Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class })
 class InternalDepositControllerTest {
 
     private static final UUID DEPOSIT_ID = UUID.fromString("7c9e6679-7425-40de-944b-e07fc1f90ae7");
@@ -47,6 +56,9 @@ class InternalDepositControllerTest {
 
     @MockitoBean
     private DepositService depositService;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
 
     private static String requestWith(String field, String jsonValue) {
         return VALID_REQUEST.replaceFirst("\"" + field + "\": [^,\\n]*", "\"" + field + "\": " + jsonValue);
