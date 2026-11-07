@@ -27,6 +27,8 @@ class NotificationFactoryTest {
     private static final UUID TRANSFER_ID = UUID.fromString("8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d");
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
+    private static final String ANA = "00000000-0000-0000-0003-000000000001";
+    private static final String BRUNO = "00000000-0000-0000-0003-000000000002";
 
     /** O failureCode chega como texto, do jeito que está no JSON. */
     private static TransferEventMessageDto event(String type, int version, String failureCode) {
@@ -35,8 +37,14 @@ class NotificationFactoryTest {
 
     /** O amount também chega como texto: o transfer publica o BigDecimal com toPlainString(). */
     private static TransferEventMessageDto event(String type, String failureCode, String amount, int version) {
+        return eventWithOwners(type, failureCode, amount, version, ANA, BRUNO);
+    }
+
+    /** A Ana pediu (requestedBy) e o Bruno é o dono da conta de destino (targetOwnerId), como no transfer. */
+    private static TransferEventMessageDto eventWithOwners(String type, String failureCode, String amount, int version,
+            String requestedBy, String targetOwnerId) {
         return new TransferEventMessageDto(EVENT_ID, type, version, Instant.now(), TRANSFER_ID,
-                SOURCE, TARGET, amount, failureCode);
+                SOURCE, TARGET, amount, failureCode, requestedBy, targetOwnerId);
     }
 
     private static String messageOf(List<Notification> notifications, NotificationType type) {
@@ -60,6 +68,44 @@ class NotificationFactoryTest {
                     .containsExactlyInAnyOrder(
                             tuple(SOURCE, NotificationType.TRANSFER_SENT, null),
                             tuple(TARGET, NotificationType.TRANSFER_RECEIVED, null));
+        }
+
+        /** Quem pediu fica com o TRANSFER_SENT; o dono do destino, com o TRANSFER_RECEIVED. */
+        @Test
+        void shouldGiveEachNotificationToTheRightOwner() {
+            List<Notification> notifications = NotificationFactory.from(
+                    event(TransferEventMessageDto.COMPLETED, 1, null));
+
+            assertThat(notifications)
+                    .extracting(Notification::getType, Notification::getOwnerId)
+                    .containsExactlyInAnyOrder(
+                            tuple(NotificationType.TRANSFER_SENT, ANA),
+                            tuple(NotificationType.TRANSFER_RECEIVED, BRUNO));
+        }
+
+        /** Destino sem dono (conta criada antes da Fase 4): a notificação de crédito é gravada, mas ninguém a vê. */
+        @Test
+        void shouldCreateReceivedWithoutOwnerWhenTargetHasNoOwner() {
+            List<Notification> notifications = NotificationFactory.from(
+                    eventWithOwners(TransferEventMessageDto.COMPLETED, null, "250.50", 1, ANA, null));
+
+            assertThat(notifications)
+                    .extracting(Notification::getType, Notification::getOwnerId)
+                    .containsExactlyInAnyOrder(
+                            tuple(NotificationType.TRANSFER_SENT, ANA),
+                            tuple(NotificationType.TRANSFER_RECEIVED, null));
+        }
+
+        /**
+         * Um evento publicado antes do 5.2a não tem os campos de dono. Ele continua válido (versão 1):
+         * as notificações são criadas sem dono, sem exceção e sem ir para a DLT.
+         */
+        @Test
+        void shouldAcceptEventPublishedBeforeTheOwnersExisted() {
+            List<Notification> notifications = NotificationFactory.from(
+                    eventWithOwners(TransferEventMessageDto.COMPLETED, null, "250.50", 1, null, null));
+
+            assertThat(notifications).hasSize(2).extracting(Notification::getOwnerId).containsOnlyNulls();
         }
 
         @Test
@@ -91,6 +137,23 @@ class NotificationFactoryTest {
                         assertThat(notification.getFailureCode()).isEqualTo(FailureCode.INSUFFICIENT_BALANCE);
                         assertThat(notification.getEventId()).isEqualTo(EVENT_ID);
                         assertThat(notification.getTransferId()).isEqualTo(TRANSFER_ID);
+                    });
+        }
+
+        /**
+         * A falha vai para quem pediu, e não para o dono da conta de origem: se a Ana tentou transferir da
+         * conta do Bruno, a notificação é dela, e o Bruno não fica sabendo da tentativa.
+         */
+        @Test
+        void shouldGiveFailedNotificationToWhoRequested() {
+            List<Notification> notifications = NotificationFactory.from(
+                    eventWithOwners(TransferEventMessageDto.FAILED, "ACCOUNT_NOT_FOUND", "250.50", 1, ANA, null));
+
+            assertThat(notifications)
+                    .singleElement()
+                    .satisfies(notification -> {
+                        assertThat(notification.getAccountNumber()).isEqualTo(SOURCE);
+                        assertThat(notification.getOwnerId()).isEqualTo(ANA);
                     });
         }
 

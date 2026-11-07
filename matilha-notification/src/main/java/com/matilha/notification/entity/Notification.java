@@ -42,6 +42,9 @@ public class Notification {
     @Column(nullable = false, updatable = false, length = 5)
     private String accountNumber;
 
+    @Column(updatable = false)
+    private String ownerId;
+
     @Column(nullable = false, updatable = false)
     @Enumerated(EnumType.STRING)
     private NotificationType type;
@@ -57,7 +60,7 @@ public class Notification {
     @CreationTimestamp
     private Instant createdAt;
 
-    public Notification(UUID eventId, UUID transferId, String accountNumber, NotificationType type, String message,
+    public Notification(UUID eventId, UUID transferId, String accountNumber, String ownerId, NotificationType type, String message,
             FailureCode failureCode) {
         if (eventId == null || transferId == null || type == null) {
             throw new BusinessException("eventId, transferId and type must not be null");
@@ -68,6 +71,7 @@ public class Notification {
         this.eventId = eventId;
         this.transferId = transferId;
         this.accountNumber = requireAccountNumber(accountNumber);
+        this.ownerId = ownerId;
         this.type = type;
         this.message = requiredNotBlank(message, "message");
         this.failureCode = failureCode;

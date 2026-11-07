@@ -34,6 +34,8 @@ class TransferEventListenerTest {
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
+    private static final String ANA = "00000000-0000-0000-0003-000000000001";
+    private static final String BRUNO = "00000000-0000-0000-0003-000000000002";
 
     @Autowired
     private KafkaTemplate<String, String> kafkaTemplate;
@@ -99,6 +101,38 @@ class TransferEventListenerTest {
 
         await().atMost(TIMEOUT).untilAsserted(() -> assertThat(notificationsOf(markerTransferId)).hasSize(2));
         assertThat(notificationsOf(transferId)).hasSize(2);
+    }
+
+    /** Com os campos do 5.2a, cada notificação fica com o seu dono: quem pediu e o dono do destino. */
+    @Test
+    void shouldSaveTheOwnerOfEachNotification() {
+        UUID transferId = UUID.randomUUID();
+        String payload = json(UUID.randomUUID(), TransferEventMessageDto.COMPLETED, transferId, null)
+                .replaceFirst("\\{", "{\"requestedBy\":\"" + ANA + "\",\"targetOwnerId\":\"" + BRUNO + "\",");
+
+        send(payload);
+
+        await().atMost(TIMEOUT).untilAsserted(() -> assertThat(notificationsOf(transferId))
+                .extracting(Notification::getType, Notification::getOwnerId)
+                .containsExactlyInAnyOrder(
+                        tuple(NotificationType.TRANSFER_SENT, ANA),
+                        tuple(NotificationType.TRANSFER_RECEIVED, BRUNO)));
+    }
+
+    /**
+     * Um evento publicado antes do 5.2a, sem os campos de dono, ainda é consumido: as notificações são gravadas
+     * sem dono, em vez de o evento ir para a DLT. É a compatibilidade nos dois sentidos (ADR-0011).
+     */
+    @Test
+    void shouldConsumeEventWithoutOwners() {
+        UUID transferId = UUID.randomUUID();
+
+        send(json(UUID.randomUUID(), TransferEventMessageDto.COMPLETED, transferId, null));
+
+        await().atMost(TIMEOUT).untilAsserted(() -> assertThat(notificationsOf(transferId))
+                .hasSize(2)
+                .extracting(Notification::getOwnerId)
+                .containsOnlyNulls());
     }
 
     /** O transfer pode acrescentar campos ao evento sem quebrar este consumidor. */

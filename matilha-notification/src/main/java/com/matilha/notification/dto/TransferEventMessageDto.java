@@ -15,7 +15,9 @@ public record TransferEventMessageDto(
         String sourceAccountNumber,
         String targetAccountNumber,
         String amount,
-        String failureCode) {
+        String failureCode,
+        String requestedBy,
+        String targetOwnerId) {
 
     public static final String COMPLETED = "TransferCompleted";
     public static final String FAILED = "TransferFailed";

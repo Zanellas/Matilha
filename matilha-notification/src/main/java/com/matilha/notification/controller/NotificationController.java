@@ -3,6 +3,7 @@ package com.matilha.notification.controller;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PagedModel;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,8 +24,10 @@ public class NotificationController {
 
     @GetMapping
     public ResponseEntity<PagedModel<NotificationResponseDto>> findByAccount(
-            @RequestParam @Pattern(regexp = "\\d{5}") String accountNumber, Pageable pageable) {
-        return ResponseEntity.ok(new PagedModel<>(notificationService.findByAccount(accountNumber, pageable)));
+            @RequestParam @Pattern(regexp = "\\d{5}") String accountNumber, Pageable pageable,
+            Authentication authentication) {
+        return ResponseEntity.ok(new PagedModel<>(
+                notificationService.findByAccount(authentication.getName(), accountNumber, pageable)));
     }
 
 }

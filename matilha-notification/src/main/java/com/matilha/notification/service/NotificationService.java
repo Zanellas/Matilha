@@ -42,8 +42,8 @@ public class NotificationService {
     }
 
     @Transactional(readOnly = true)
-    public Page<NotificationResponseDto> findByAccount(String accountNumber, Pageable pageable) {
-        return notificationRepository.findByAccountNumber(accountNumber, pageable)
+    public Page<NotificationResponseDto> findByAccount(String ownerId, String accountNumber, Pageable pageable) {
+        return notificationRepository.findByOwnerIdAndAccountNumber(ownerId, accountNumber, pageable)
                 .map(NotificationResponseDto::from);
     }
 

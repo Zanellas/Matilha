@@ -32,6 +32,8 @@ import com.matilha.notification.repository.NotificationRepository;
 @Import(TestcontainersConfiguration.class)
 class NotificationQueryTest {
 
+    private static final String ANA = "00000000-0000-0000-0003-000000000001";
+    private static final String BRUNO = "00000000-0000-0000-0003-000000000002";
     private static final Sort NEWEST_FIRST = Sort.by(Sort.Direction.DESC, "createdAt");
     private static final Instant OLDEST = Instant.parse("2026-11-01T10:00:00Z");
     private static final Instant MIDDLE = Instant.parse("2026-11-01T11:00:00Z");
@@ -59,8 +61,12 @@ class NotificationQueryTest {
      * para a ordem do teste não depender de duas gravações caírem em instantes diferentes.
      */
     private void save(String account, String message, Instant createdAt) {
+        save(account, ANA, message, createdAt);
+    }
+
+    private void save(String account, String owner, String message, Instant createdAt) {
         Notification notification = notificationRepository.saveAndFlush(new Notification(UUID.randomUUID(),
-                UUID.randomUUID(), account, NotificationType.TRANSFER_SENT, message, null));
+                UUID.randomUUID(), account, owner, NotificationType.TRANSFER_SENT, message, null));
         jdbcTemplate.update("UPDATE notifications SET created_at = ? WHERE id = ?",
                 Timestamp.from(createdAt), notification.getId());
     }
@@ -72,11 +78,50 @@ class NotificationQueryTest {
         save(account, "mine", NEWEST);
         save(other, "not mine", NEWEST);
 
-        Page<NotificationResponseDto> page = notificationService.findByAccount(account, newestFirst(0, 10));
+        Page<NotificationResponseDto> page = notificationService.findByAccount(ANA, account, newestFirst(0, 10));
 
         assertThat(page.getContent())
                 .extracting(NotificationResponseDto::message)
                 .containsExactly("mine");
+    }
+
+    /**
+     * Na mesma conta, cada um vê só as suas. É o caso da Ana tentando transferir da conta do Bruno:
+     * a notificação de falha é da Ana, e o Bruno não a vê, mesmo sendo a conta dele.
+     */
+    @Test
+    void shouldReturnOnlyNotificationsOfTheOwner() {
+        String account = newAccount();
+        save(account, BRUNO, "of bruno", NEWEST);
+        save(account, ANA, "of ana", MIDDLE);
+
+        Page<NotificationResponseDto> ofBruno = notificationService.findByAccount(BRUNO, account, newestFirst(0, 10));
+        Page<NotificationResponseDto> ofAna = notificationService.findByAccount(ANA, account, newestFirst(0, 10));
+
+        assertThat(ofBruno.getContent()).extracting(NotificationResponseDto::message).containsExactly("of bruno");
+        assertThat(ofAna.getContent()).extracting(NotificationResponseDto::message).containsExactly("of ana");
+    }
+
+    /** A conta de outra pessoa dá página vazia, igual a uma conta sem notificações: não revela nada. */
+    @Test
+    void shouldReturnEmptyPageForAccountOfAnotherUser() {
+        String account = newAccount();
+        save(account, BRUNO, "of bruno", NEWEST);
+
+        Page<NotificationResponseDto> page = notificationService.findByAccount(ANA, account, newestFirst(0, 10));
+
+        assertThat(page.getContent()).isEmpty();
+        assertThat(page.getTotalElements()).isZero();
+    }
+
+    /** As notificações sem dono (anteriores à Fase 4, ou de conta sem dono) não aparecem para ninguém. */
+    @Test
+    void shouldNotReturnNotificationsWithoutOwner() {
+        String account = newAccount();
+        save(account, null, "orphan", NEWEST);
+
+        assertThat(notificationService.findByAccount(ANA, account, newestFirst(0, 10)).getContent()).isEmpty();
+        assertThat(notificationService.findByAccount(BRUNO, account, newestFirst(0, 10)).getContent()).isEmpty();
     }
 
     @Test
@@ -86,7 +131,7 @@ class NotificationQueryTest {
         save(account, "newest", NEWEST);
         save(account, "oldest", OLDEST);
 
-        Page<NotificationResponseDto> page = notificationService.findByAccount(account, newestFirst(0, 10));
+        Page<NotificationResponseDto> page = notificationService.findByAccount(ANA, account, newestFirst(0, 10));
 
         assertThat(page.getContent())
                 .extracting(NotificationResponseDto::message)
@@ -100,7 +145,7 @@ class NotificationQueryTest {
         save(account, "z-oldest", OLDEST);
         save(account, "a-newest", NEWEST);
 
-        Page<NotificationResponseDto> page = notificationService.findByAccount(account,
+        Page<NotificationResponseDto> page = notificationService.findByAccount(ANA, account,
                 PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "message")));
 
         assertThat(page.getContent())
@@ -115,8 +160,8 @@ class NotificationQueryTest {
         save(account, "middle", MIDDLE);
         save(account, "newest", NEWEST);
 
-        Page<NotificationResponseDto> first = notificationService.findByAccount(account, newestFirst(0, 2));
-        Page<NotificationResponseDto> second = notificationService.findByAccount(account, newestFirst(1, 2));
+        Page<NotificationResponseDto> first = notificationService.findByAccount(ANA, account, newestFirst(0, 2));
+        Page<NotificationResponseDto> second = notificationService.findByAccount(ANA, account, newestFirst(1, 2));
 
         assertThat(first.getContent()).extracting(NotificationResponseDto::message).containsExactly("newest", "middle");
         assertThat(second.getContent()).extracting(NotificationResponseDto::message).containsExactly("oldest");
@@ -129,7 +174,7 @@ class NotificationQueryTest {
         String account = newAccount();
         save(account, "Você enviou 250.50 para a conta 10002", NEWEST);
 
-        NotificationResponseDto response = notificationService.findByAccount(account, newestFirst(0, 10))
+        NotificationResponseDto response = notificationService.findByAccount(ANA, account, newestFirst(0, 10))
                 .getContent().getFirst();
 
         assertThat(response.id()).isNotNull();
@@ -143,7 +188,7 @@ class NotificationQueryTest {
 
     @Test
     void shouldReturnEmptyPageForUnknownAccount() {
-        Page<NotificationResponseDto> page = notificationService.findByAccount("00000", newestFirst(0, 10));
+        Page<NotificationResponseDto> page = notificationService.findByAccount(ANA, "00000", newestFirst(0, 10));
 
         assertThat(page.getContent()).isEmpty();
         assertThat(page.getTotalElements()).isZero();

@@ -10,5 +10,6 @@ import com.matilha.notification.entity.Notification;
 
 public interface NotificationRepository extends JpaRepository<Notification, UUID> {
 
-    Page<Notification> findByAccountNumber(String accountNumber, Pageable pageable);
+    Page<Notification> findByOwnerIdAndAccountNumber(String ownerId, String accountNumber, Pageable pageable);
+
 }

@@ -35,6 +35,7 @@ public final class NotificationFactory {
 
     private static Notification sent(TransferEventMessageDto event) {
         return new Notification(event.eventId(), event.transferId(), event.sourceAccountNumber(),
+                event.requestedBy(),
                 NotificationType.TRANSFER_SENT,
                 "Você enviou " + brl(event.amount()) + " para a conta " + event.targetAccountNumber(),
                 null);
@@ -42,6 +43,7 @@ public final class NotificationFactory {
 
     private static Notification received(TransferEventMessageDto event) {
         return new Notification(event.eventId(), event.transferId(), event.targetAccountNumber(),
+                event.targetOwnerId(),
                 NotificationType.TRANSFER_RECEIVED,
                 "Você recebeu " + brl(event.amount()) + " da conta " + event.sourceAccountNumber(),
                 null);
@@ -49,6 +51,7 @@ public final class NotificationFactory {
 
     private static Notification failed(TransferEventMessageDto event) {
         return new Notification(event.eventId(), event.transferId(), event.sourceAccountNumber(),
+                event.requestedBy(),
                 NotificationType.TRANSFER_FAILED,
                 "Sua transferência de " + brl(event.amount()) + " para a conta "
                         + event.targetAccountNumber() + " falhou",
