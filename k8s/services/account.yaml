@@ -5,6 +5,7 @@ metadata:
 data:
   ACCOUNT_DB_URL: jdbc:postgresql://account-db:5432/matilha_account
   SPRING_FLYWAY_LOCATIONS: classpath:db/migration,classpath:db/seed
+  KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/matilha/protocol/openid-connect/certs
 ---
 apiVersion: v1
 kind: Service

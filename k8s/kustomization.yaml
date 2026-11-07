@@ -11,6 +11,8 @@ resources:
   - infra/notification-db.yaml
   - infra/kafka.yaml
   - infra/kafka-ui.yaml
+  - infra/keycloak-admin-secret.yaml
+  - infra/keycloak.yaml
   - services/account.yaml
   - services/transfer.yaml
   - services/notification.yaml

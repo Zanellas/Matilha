@@ -6,6 +6,7 @@ data:
   TRANSFER_DB_URL: jdbc:postgresql://transfer-db:5432/matilha_transfer
   ACCOUNT_SERVICE_URL: http://account:8081
   KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/matilha/protocol/openid-connect/certs
 ---
 apiVersion: v1
 kind: Service

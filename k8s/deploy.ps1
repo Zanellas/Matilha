@@ -5,8 +5,8 @@
 #   .\k8s\deploy.ps1 -Servicos transfer   # só gera e reinicia o transfer (depois de mudar o código dele)
 #   .\k8s\deploy.ps1 -SemBuild            # só aplica os manifests (depois de mudar um YAML)
 #
-# Pré-requisitos: Docker Desktop rodando (em cgroup v2), kind, kubectl e os três
-# k8s/infra/*-db-secret.yaml criados a partir dos .example.
+# Pré-requisitos: Docker Desktop rodando (em cgroup v2), kind, kubectl, os três
+# k8s/infra/*-db-secret.yaml e o k8s/infra/keycloak-admin-secret.yaml criados a partir dos .example.
 
 param(
     [ValidateSet("account", "transfer", "notification", "gateway")]
@@ -20,6 +20,7 @@ $ErrorActionPreference = "Continue"
 $Cluster = "matilha"
 $Raiz = Split-Path $PSScriptRoot -Parent
 $KafkaUi = "ghcr.io/kafbat/kafka-ui:v1.5.0"
+$Keycloak = "quay.io/keycloak/keycloak:26.7.5"
 
 function Passo($texto) { Write-Host "`n==> $texto" -ForegroundColor Cyan }
 function Falhou($texto) { Write-Host $texto -ForegroundColor Red; exit 1 }
@@ -41,6 +42,9 @@ foreach ($banco in "account", "transfer", "notification") {
         Falhou "Falta $secret. Copie o $banco-db-secret.example.yaml e defina usuário e senha."
     }
 }
+if (-not (Test-Path (Join-Path $Raiz "k8s/infra/keycloak-admin-secret.yaml"))) {
+    Falhou "Falta k8s/infra/keycloak-admin-secret.yaml. Copie o keycloak-admin-secret.example.yaml e defina usuário e senha."
+}
 
 $existia = (kind get clusters 2>$null) -contains $Cluster
 if (-not $existia) {
@@ -59,12 +63,19 @@ if (-not $SemBuild) {
     Executar kind load docker-image @imagens --name $Cluster
 }
 
-docker image inspect $KafkaUi *> $null
-if ($LASTEXITCODE -ne 0) {
-    Passo "Baixando a imagem da Kafka UI"
-    Executar docker pull $KafkaUi
+foreach ($imagem in $KafkaUi, $Keycloak) {
+    docker image inspect $imagem *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Passo "Baixando a imagem $imagem"
+        Executar docker pull $imagem
+    }
+    Executar kind load docker-image $imagem --name $Cluster
 }
-Executar kind load docker-image $KafkaUi --name $Cluster
+
+Passo "Atualizando o realm do Keycloak"
+Executar kubectl apply -f (Join-Path $Raiz "k8s/namespace.yaml")
+Executar kubectl delete configmap keycloak-realm -n matilha --ignore-not-found
+Executar kubectl create configmap keycloak-realm -n matilha "--from-file=$(Join-Path $Raiz 'keycloak/realm-matilha.json')"
 
 Passo "Aplicando os manifests"
 Executar kubectl apply -k (Join-Path $Raiz "k8s")
@@ -78,9 +89,9 @@ if ($existia -and -not $SemBuild) {
 }
 
 Passo "Esperando os serviços ficarem prontos"
-foreach ($servico in "account", "transfer", "notification", "gateway") {
+foreach ($servico in "keycloak", "account", "transfer", "notification", "gateway") {
     Executar kubectl rollout status "deployment/$servico" --timeout=5m
 }
 
 kubectl get pods
-Write-Host "`nPronto: http://localhost:8080" -ForegroundColor Green
+Write-Host "`nPronto: http://localhost:8080 (API) e http://localhost:8180 (Keycloak)" -ForegroundColor Green

@@ -6,6 +6,7 @@ data:
   ACCOUNT_SERVICE_URL: http://account:8081
   TRANSFER_SERVICE_URL: http://transfer:8082
   NOTIFICATION_SERVICE_URL: http://notification:8083
+  KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/matilha/protocol/openid-connect/certs
 ---
 apiVersion: v1
 kind: Service
