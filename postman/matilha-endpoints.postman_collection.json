@@ -1,0 +1,642 @@
+{
+  "info": {
+    "name": "Matilha - Endpoints",
+    "description": "Todos os endpoints do Matilha, um por requisição, sem testes e sem roteiro. Para explorar a API à vontade.\nO roteiro com testes é a outra collection, matilha.postman_collection.json.\n\nPara pegar um token: abra a aba Authorization da coleção, clique em \"Get New Access Token\" e depois em \"Use Token\".\nO usuário vem das variáveis username e password (ana / ana123 por padrão). Para agir como outra pessoa, troque as\nvariáveis (bruno / bruno123, ou suporte / suporte123, que é o admin) e peça um token novo. O token vale 5 minutos.\n\nO client é o matilha-dev-cli, que aceita usuário e senha direto e existe só para desenvolvimento (keycloak/README.md).\nAs requisições do /internal/** e os health checks vão sem token, direto no serviço.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      {
+        "key": "grant_type",
+        "value": "password_credentials",
+        "type": "string"
+      },
+      {
+        "key": "accessTokenUrl",
+        "value": "{{keycloakUrl}}/realms/matilha/protocol/openid-connect/token",
+        "type": "string"
+      },
+      {
+        "key": "clientId",
+        "value": "matilha-dev-cli",
+        "type": "string"
+      },
+      {
+        "key": "username",
+        "value": "{{username}}",
+        "type": "string"
+      },
+      {
+        "key": "password",
+        "value": "{{password}}",
+        "type": "string"
+      },
+      {
+        "key": "client_authentication",
+        "value": "body",
+        "type": "string"
+      },
+      {
+        "key": "tokenName",
+        "value": "matilha-dev-cli",
+        "type": "string"
+      },
+      {
+        "key": "addTokenTo",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "accountUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "transferUrl",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "notificationUrl",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "keycloakUrl",
+      "value": "http://localhost:8180"
+    },
+    {
+      "key": "username",
+      "value": "ana"
+    },
+    {
+      "key": "password",
+      "value": "ana123"
+    },
+    {
+      "key": "ownerId",
+      "value": "00000000-0000-0000-0003-000000000001"
+    },
+    {
+      "key": "accountNumber",
+      "value": "10001"
+    },
+    {
+      "key": "targetAccountNumber",
+      "value": "10002"
+    },
+    {
+      "key": "transferId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Keycloak",
+      "item": [
+        {
+          "name": "Token (password grant, matilha-dev-cli)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/matilha/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "matilha",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "client_id",
+                  "value": "matilha-dev-cli"
+                },
+                {
+                  "key": "username",
+                  "value": "{{username}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password}}"
+                }
+              ]
+            },
+            "description": "O mesmo pedido que o \"Get New Access Token\" faz, aqui à mostra. Cole o access_token em jwt.io ou decodifique o meio do token para ver as claims."
+          }
+        },
+        {
+          "name": "Configuração do OpenID Connect",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/matilha/.well-known/openid-configuration",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "matilha",
+                ".well-known",
+                "openid-configuration"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Chaves públicas (JWKS)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/matilha/protocol/openid-connect/certs",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "matilha",
+                "protocol",
+                "openid-connect",
+                "certs"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "As chaves que o gateway e os serviços usam para conferir a assinatura dos tokens."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Gateway",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Account",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{accountUrl}}/actuator/health",
+              "host": [
+                "{{accountUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Transfer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{transferUrl}}/actuator/health",
+              "host": [
+                "{{transferUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Notification",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationUrl}}/actuator/health",
+              "host": [
+                "{{notificationUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contas (/accounts)",
+      "item": [
+        {
+          "name": "Abrir conta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holderName\": \"Ana Silva\",\n  \"holderDocument\": \"52998224725\",\n  \"holderEmail\": \"ana.poupanca@example.com\",\n  \"holderPhone\": \"11987654321\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "O dono da conta é quem está no token, nunca um campo do corpo."
+          }
+        },
+        {
+          "name": "Listar minhas contas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts?page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "O cliente vê só as próprias contas; o admin (suporte) vê todas."
+          }
+        },
+        {
+          "name": "Consultar conta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{accountNumber}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{accountNumber}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Alterar dados do titular",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{accountNumber}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{accountNumber}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holderName\": \"Ana Silva\",\n  \"holderEmail\": \"ana.silva@example.com\",\n  \"holderPhone\": \"11987654321\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Encerrar conta",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{accountNumber}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{accountNumber}}"
+              ]
+            },
+            "description": "Só com saldo zero."
+          }
+        },
+        {
+          "name": "Bloquear conta (admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{accountNumber}}/block",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{accountNumber}}",
+                "block"
+              ]
+            },
+            "description": "Exige o papel admin: use username suporte / password suporte123."
+          }
+        },
+        {
+          "name": "Desbloquear conta (admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{accountNumber}}/unblock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{accountNumber}}",
+                "unblock"
+              ]
+            },
+            "description": "Exige o papel admin: use username suporte / password suporte123."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transferências (/transfers)",
+      "item": [
+        {
+          "name": "Transferir",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transfers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"{{accountNumber}}\",\n  \"targetAccountNumber\": \"{{targetAccountNumber}}\",\n  \"amount\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A Idempotency-Key é nova a cada envio. Para testar o reenvio, troque {{$guid}} por um UUID fixo."
+          }
+        },
+        {
+          "name": "Consultar transferência",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transfers/{{transferId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers",
+                "{{transferId}}"
+              ]
+            },
+            "description": "Copie o id da resposta do \"Transferir\" para a variável transferId."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notificações (/notifications)",
+      "item": [
+        {
+          "name": "Minhas notificações (todas as contas)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Minhas notificações de uma conta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?accountNumber={{accountNumber}}&page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "accountNumber",
+                  "value": "{{accountNumber}}"
+                },
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Interno (direto no account, sem token)",
+      "description": "O gateway não tem rota para o /internal/**: estas requisições vão direto na porta do account. No kind, precisam do port-forward: kubectl port-forward svc/account 8081:8081.",
+      "item": [
+        {
+          "name": "Depósito (sistema de pagamentos)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{accountUrl}}/internal/deposits",
+              "host": [
+                "{{accountUrl}}"
+              ],
+              "path": [
+                "internal",
+                "deposits"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"depositId\": \"{{$guid}}\",\n  \"accountNumber\": \"{{accountNumber}}\",\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Transferência interna (o que o transfer chama)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{accountUrl}}/internal/transfers",
+              "host": [
+                "{{accountUrl}}"
+              ],
+              "path": [
+                "internal",
+                "transfers"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{$guid}}\",\n  \"ownerId\": \"{{ownerId}}\",\n  \"sourceAccountNumber\": \"{{accountNumber}}\",\n  \"targetAccountNumber\": \"{{targetAccountNumber}}\",\n  \"amount\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Move dinheiro de verdade. O ownerId precisa ser o dono da conta de origem."
+          }
+        }
+      ]
+    }
+  ]
+}

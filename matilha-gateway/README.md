@@ -115,7 +115,7 @@ Não precisa do Docker: o gateway não tem banco nem Kafka. Os testes sobem o ga
 - **Erros dos serviços:** um `422` em Problem Details chega byte a byte igual, e o `404` do transfer não vira `ROUTE_NOT_FOUND`.
 - **Serviço fora do ar** (`GatewayServiceUnavailableTest`): com os três serviços apontando para portas fechadas, as três rotas devolvem `503` com `SERVICE_UNAVAILABLE`, sem vazar endereço nem causa, e o `/actuator/health/readiness` continua `UP`.
 
-A [collection do Postman](../postman/matilha-transfer.postman_collection.json) roda o fluxo inteiro pelo gateway (`baseUrl` na 8080), e a pasta "0. Gateway" confere o bloqueio do `/internal/**`.
+A [collection do Postman](../postman/matilha.postman_collection.json) roda o fluxo inteiro pelo gateway (`baseUrl` na 8080), e a pasta "0. Gateway" confere o bloqueio do `/internal/**`.
 
 ## CI
 

@@ -90,7 +90,7 @@ curl -i -X POST http://localhost:8080/internal/deposits   # 404, code ROUTE_NOT_
 
 O `compose.yaml` da raiz inclui a infraestrutura (`infra/compose.yaml`: Kafka e Kafka UI) e o compose de cada serviço. Para subir só uma parte, rode na raiz com o nome dos serviços, por exemplo `docker compose up -d transfer-db kafka`.
 
-Outros modos de rodar, endpoints, regras e testes estão no README de cada serviço. A [collection do Postman](postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro pelo gateway: depósito (direto no account, porque é interno), transferência e notificações.
+Outros modos de rodar, endpoints, regras e testes estão no README de cada serviço. A [collection do Postman](postman/matilha.postman_collection.json) testa o fluxo inteiro pelo gateway: depósito (direto no account, porque é interno), transferência e notificações.
 
 ## Como rodar no Kubernetes
 

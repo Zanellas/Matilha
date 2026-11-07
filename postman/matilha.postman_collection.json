@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Matilha - Transfer e Notification",
-    "description": "Roteiro de testes do fluxo inteiro: matilha-transfer, matilha-account e matilha-notification, rodando localmente com o perfil dev (docker compose up --build na raiz).\n\nAs chamadas públicas passam pelo matilha-gateway ({{baseUrl}}, porta 8080), que é a porta de entrada oficial. Ficam direto no serviço só o que é interno (POST /internal/transfers no account) e os health checks dos serviços, porque o gateway não tem rota para /internal/** nem para o /actuator dos serviços.\n\nRode as pastas 0 a 6 em ordem com o Collection Runner. A pasta 7 é manual: pare o account antes de rodar.\n\nAs requisições usam as contas de exemplo do perfil dev (10001 a 10005).\n\nAs recusas são conferidas pelo code do Problem Details (INSUFFICIENT_BALANCE, ACCOUNT_NOT_FOUND, ACCOUNT_INACTIVE), que é o contrato. O detail é texto e pode mudar.\n\nCada transferência COMPLETED ou FAILED gera um evento no tópico matilha.transfer.events, e o notification transforma o evento em notificações. A pasta 6 confere essas notificações pelo transferId das pastas 2 e 3. Para ver os eventos, abra a Kafka UI (http://localhost:8090).\n\nAutenticação: o script da coleção pega um token no Keycloak (http://localhost:8180) antes das requisições, com o client matilha-dev-cli e o usuário das variáveis username e password (ana por padrão). O token fica na variável accessToken e é renovado quando falta menos de 30 segundos para vencer, ou quando o username muda. Esse client aceita usuário e senha direto e existe só para desenvolvimento. As chamadas diretas aos serviços (health e /internal/**) vão sem token, porque são públicas nesta fase.",
+    "name": "Matilha",
+    "description": "Roteiro de testes do sistema inteiro: matilha-gateway, matilha-account, matilha-transfer e matilha-notification, com o Keycloak. Funciona igual no docker compose e no cluster kind: os endereços são os mesmos (gateway em http://localhost:8080 e Keycloak em http://localhost:8180).\n\nAs chamadas públicas passam pelo gateway ({{baseUrl}}). Ficam direto no serviço só o que é interno (/internal/**) e os health checks, porque o gateway não tem rota para eles.\n\nRode as pastas 0 a 6 em ordem com o Collection Runner. As pastas 7 e 8 são manuais: a 7 precisa do account parado, e a 8 abre o navegador para o login.\n\nAutenticação: o script da coleção pega dois tokens no Keycloak antes das requisições, um da Ana (username/password, o padrão da coleção) e um do Bruno (brunoUsername/brunoPassword, usado nas requisições que leem a conta 10002, que é dele). Cada token fica em cache e é renovado quando falta menos de 30 segundos para vencer. O script usa o client matilha-dev-cli, que aceita usuário e senha direto e existe só para desenvolvimento. O login real é o da pasta 8, com Authorization Code + PKCE pelo client matilha-web. Os usuários de demonstração, as senhas e os clients estão explicados no keycloak/README.md.\n\nRegra de dono: cada usuário vê e movimenta só as próprias contas. A conta de outra pessoa se comporta como se não existisse (404 na leitura, ACCOUNT_NOT_FOUND na transferência a partir dela), e as notificações aparecem só para quem é o dono de cada uma.\n\nAs recusas são conferidas pelo code do Problem Details (INSUFFICIENT_BALANCE, ACCOUNT_NOT_FOUND, ACCOUNT_INACTIVE), que é o contrato. O detail é texto e pode mudar. Para ver os eventos, abra a Kafka UI.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -43,6 +43,34 @@
     },
     {
       "key": "accessTokenExpiresAt",
+      "value": ""
+    },
+    {
+      "key": "anaId",
+      "value": "00000000-0000-0000-0003-000000000001"
+    },
+    {
+      "key": "brunoUsername",
+      "value": "bruno"
+    },
+    {
+      "key": "brunoPassword",
+      "value": "bruno123"
+    },
+    {
+      "key": "brunoAccessToken",
+      "value": ""
+    },
+    {
+      "key": "brunoAccessTokenUser",
+      "value": ""
+    },
+    {
+      "key": "brunoAccessTokenExpiresAt",
+      "value": ""
+    },
+    {
+      "key": "foreignTransferId",
       "value": ""
     },
     {
@@ -687,7 +715,7 @@
           }
         },
         {
-          "name": "Saldo inicial da 10002 (destino)",
+          "name": "Saldo inicial da 10002 (destino, com o token do Bruno)",
           "event": [
             {
               "listen": "test",
@@ -710,6 +738,16 @@
               "path": [
                 "accounts",
                 "10002"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{brunoAccessToken}}",
+                  "type": "string"
+                }
               ]
             }
           }
@@ -962,7 +1000,7 @@
           }
         },
         {
-          "name": "Saldo da 10002 subiu UMA vez só",
+          "name": "Saldo da 10002 subiu UMA vez só (com o token do Bruno)",
           "event": [
             {
               "listen": "test",
@@ -990,6 +1028,16 @@
                 "accounts",
                 "10002"
               ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{brunoAccessToken}}",
+                  "type": "string"
+                }
+              ]
             }
           }
         }
@@ -1006,7 +1054,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Chama o account sem passar pelo transfer, para ver o code na origem.",
+                  "// Chama o account sem passar pelo transfer, para ver o code na origem. O /internal/** não pede token,",
+                  "// mas exige o ownerId: é o transfer que o repassa, a partir do token de quem pediu.",
                   "// O transferId é novo a cada execução e a transferência é recusada, então nenhum saldo muda.",
                   "const body = pm.response.json();",
                   "pm.test('status 422', () => pm.response.to.have.status(422));",
@@ -1025,7 +1074,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"transferId\": \"{{$guid}}\",\n  \"sourceAccountNumber\": \"10003\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 50.00\n}",
+              "raw": "{\n  \"transferId\": \"{{$guid}}\",\n  \"ownerId\": \"{{anaId}}\",\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 99999999.00\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1077,7 +1126,7 @@
           }
         },
         {
-          "name": "Saldo insuficiente (10003 tem saldo 0)",
+          "name": "Saldo insuficiente (valor maior que o saldo da 10001)",
           "event": [
             {
               "listen": "test",
@@ -1112,7 +1161,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sourceAccountNumber\": \"10003\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 50.00\n}",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10002\",\n  \"amount\": 99999999.00\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1186,7 +1235,7 @@
           }
         },
         {
-          "name": "Conta de origem bloqueada (10004)",
+          "name": "Conta de destino bloqueada (10004)",
           "event": [
             {
               "listen": "test",
@@ -1220,7 +1269,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sourceAccountNumber\": \"10004\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 10.00\n}",
+              "raw": "{\n  \"sourceAccountNumber\": \"10001\",\n  \"targetAccountNumber\": \"10004\",\n  \"amount\": 10.00\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1288,6 +1337,59 @@
               "path": [
                 "transfers"
               ]
+            }
+          }
+        },
+        {
+          "name": "Conta de outra pessoa como origem (10002, do Bruno)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A Ana tenta tirar dinheiro da conta do Bruno. O account confere o dono da origem e recusa",
+                  "// como se a conta não existisse: a mesma resposta de uma conta inexistente.",
+                  "const body = pm.response.json();",
+                  "pm.test('status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('code ACCOUNT_NOT_FOUND, sem revelar que a conta existe', () => {",
+                  "    pm.expect(body.code).to.eql('ACCOUNT_NOT_FOUND');",
+                  "    pm.expect(body.detail).to.eql('Account 10002 not found');",
+                  "});",
+                  "pm.collectionVariables.set('foreignTransferId', body.transferId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transfers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountNumber\": \"10002\",\n  \"targetAccountNumber\": \"10001\",\n  \"amount\": 10.00\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         }
@@ -1417,6 +1519,107 @@
               "path": [
                 "transfers",
                 "abc"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A Ana lendo a conta do Bruno (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('code ACCOUNT_NOT_FOUND: igual a uma conta inexistente', () => {",
+                  "    pm.expect(pm.response.json().code).to.eql('ACCOUNT_NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/10002",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10002"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A lista de contas da Ana tem só as dela",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const numbers = pm.response.json().content.map(a => a.accountNumber);",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('tem a 10001 e não tem a 10002, do Bruno', () => {",
+                  "    pm.expect(numbers).to.include('10001');",
+                  "    pm.expect(numbers).to.not.include('10002');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "O Bruno consultando a transferência da Ana (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404: a transferência de outra pessoa não é encontrada', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transfers/{{transferId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers",
+                "{{transferId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{brunoAccessToken}}",
+                  "type": "string"
+                }
               ]
             }
           }
@@ -1675,7 +1878,7 @@
           }
         },
         {
-          "name": "10002 recebeu TRANSFER_RECEIVED",
+          "name": "10002 recebeu TRANSFER_RECEIVED (com o token do Bruno)",
           "event": [
             {
               "listen": "test",
@@ -1716,67 +1919,37 @@
                   "value": "100"
                 }
               ]
-            }
-          }
-        },
-        {
-          "name": "10003 recebeu TRANSFER_FAILED com o failureCode",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// A transferência recusada por saldo insuficiente na pasta 3 avisa só a conta de origem.",
-                  "const failedId = pm.collectionVariables.get('failedTransferId');",
-                  "const mine = pm.response.json().content.filter(n => n.transferId === failedId);",
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('exatamente UMA notificação da transferência recusada', () => pm.expect(mine).to.have.lengthOf(1));",
-                  "pm.test('TRANSFER_FAILED com INSUFFICIENT_BALANCE', () => {",
-                  "    pm.expect(mine[0].type).to.eql('TRANSFER_FAILED');",
-                  "    pm.expect(mine[0].accountNumber).to.eql('10003');",
-                  "    pm.expect(mine[0].failureCode).to.eql('INSUFFICIENT_BALANCE');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/notifications?accountNumber=10003&size=100",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "notifications"
-              ],
-              "query": [
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
                 {
-                  "key": "accountNumber",
-                  "value": "10003"
-                },
-                {
-                  "key": "size",
-                  "value": "100"
+                  "key": "token",
+                  "value": "{{brunoAccessToken}}",
+                  "type": "string"
                 }
               ]
             }
           }
         },
         {
-          "name": "Destino de transferência recusada não é avisado (10001)",
+          "name": "10001 recebeu TRANSFER_FAILED com o failureCode",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// A 10001 era o destino da transferência recusada da 10003: nenhum dinheiro chegou, então nada a avisar.",
+                  "// A transferência recusada por saldo insuficiente na pasta 3 avisa só quem pediu, na conta de origem.",
                   "const failedId = pm.collectionVariables.get('failedTransferId');",
                   "const mine = pm.response.json().content.filter(n => n.transferId === failedId);",
                   "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('nenhuma notificação da transferência recusada', () => pm.expect(mine).to.be.empty);"
+                  "pm.test('exatamente UMA notificação da transferência recusada', () => pm.expect(mine).to.have.lengthOf(1));",
+                  "pm.test('TRANSFER_FAILED com INSUFFICIENT_BALANCE', () => {",
+                  "    pm.expect(mine[0].type).to.eql('TRANSFER_FAILED');",
+                  "    pm.expect(mine[0].accountNumber).to.eql('10001');",
+                  "    pm.expect(mine[0].failureCode).to.eql('INSUFFICIENT_BALANCE');",
+                  "});"
                 ]
               }
             }
@@ -1799,6 +1972,56 @@
                 {
                   "key": "size",
                   "value": "100"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Destino de transferência recusada não é avisado (10002, com o token do Bruno)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A 10002 era o destino da transferência recusada: nenhum dinheiro chegou, então nada a avisar.",
+                  "const failedId = pm.collectionVariables.get('failedTransferId');",
+                  "const mine = pm.response.json().content.filter(n => n.transferId === failedId);",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('nenhuma notificação da transferência recusada', () => pm.expect(mine).to.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/notifications?accountNumber=10002&size=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "accountNumber",
+                  "value": "10002"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{brunoAccessToken}}",
+                  "type": "string"
                 }
               ]
             }
@@ -1960,15 +2183,120 @@
           }
         },
         {
-          "name": "Sem accountNumber (400)",
+          "name": "A tentativa na conta do Bruno avisa só a Ana",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.response.to.have.status(400));",
-                  "pm.test('ProblemDetail', () => pm.expect(pm.response.json().status).to.eql(400));"
+                  "// A mesma conta, 10002, mostra notificações diferentes para pessoas diferentes.",
+                  "const content = pm.response.json().content;",
+                  "const attempt = content.filter(n => n.transferId === pm.collectionVariables.get('foreignTransferId'));",
+                  "const credit = content.filter(n => n.transferId === pm.collectionVariables.get('transferId'));",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('a Ana vê a própria tentativa recusada (TRANSFER_FAILED, ACCOUNT_NOT_FOUND)', () => {",
+                  "    pm.expect(attempt).to.have.lengthOf(1);",
+                  "    pm.expect(attempt[0].type).to.eql('TRANSFER_FAILED');",
+                  "    pm.expect(attempt[0].failureCode).to.eql('ACCOUNT_NOT_FOUND');",
+                  "});",
+                  "pm.test('a Ana não vê o crédito que o Bruno recebeu na mesma conta', () => pm.expect(credit).to.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?accountNumber=10002&size=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "accountNumber",
+                  "value": "10002"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "O Bruno não fica sabendo da tentativa na conta dele",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const attempt = pm.response.json().content.filter(n => n.transferId === pm.collectionVariables.get('foreignTransferId'));",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('nenhuma notificação da tentativa da Ana', () => pm.expect(attempt).to.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?accountNumber=10002&size=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "accountNumber",
+                  "value": "10002"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{brunoAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sem accountNumber: as notificações de todas as contas da Ana",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const content = pm.response.json().content;",
+                  "const ids = content.map(n => n.transferId);",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('vêm as notificações das duas contas da consulta: 10001 e 10002', () => {",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get('transferId'));",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get('foreignTransferId'));",
+                  "});",
+                  "pm.test('nenhuma é de outra pessoa: o crédito do Bruno na 10002 não aparece', () => {",
+                  "    const credit = content.filter(n => n.transferId === pm.collectionVariables.get('transferId') && n.type === 'TRANSFER_RECEIVED');",
+                  "    pm.expect(credit).to.be.empty;",
+                  "});"
                 ]
               }
             }
@@ -2186,6 +2514,102 @@
           }
         }
       ]
+    },
+    {
+      "name": "8. MANUAL - Login pelo navegador (Authorization Code + PKCE)",
+      "description": "O login real, como um front-end faria: a senha é digitada só na tela do Keycloak, e o Postman recebe o token pelo callback.\n\nAntes de rodar: abra a aba Authorization desta pasta, clique em \"Get New Access Token\", entre como ana / ana123 na tela do Keycloak que abrir no navegador e clique em \"Use Token\".\n\nO client é o matilha-web, público, com PKCE (S256) e sem password grant.",
+      "auth": {
+        "type": "oauth2",
+        "oauth2": [
+          {
+            "key": "grant_type",
+            "value": "authorization_code_with_pkce",
+            "type": "string"
+          },
+          {
+            "key": "authUrl",
+            "value": "{{keycloakUrl}}/realms/matilha/protocol/openid-connect/auth",
+            "type": "string"
+          },
+          {
+            "key": "accessTokenUrl",
+            "value": "{{keycloakUrl}}/realms/matilha/protocol/openid-connect/token",
+            "type": "string"
+          },
+          {
+            "key": "clientId",
+            "value": "matilha-web",
+            "type": "string"
+          },
+          {
+            "key": "redirect_uri",
+            "value": "https://oauth.pstmn.io/v1/callback",
+            "type": "string"
+          },
+          {
+            "key": "useBrowser",
+            "value": true,
+            "type": "boolean"
+          },
+          {
+            "key": "challengeAlgorithm",
+            "value": "S256",
+            "type": "string"
+          },
+          {
+            "key": "scope",
+            "value": "openid",
+            "type": "string"
+          },
+          {
+            "key": "client_authentication",
+            "value": "body",
+            "type": "string"
+          },
+          {
+            "key": "tokenName",
+            "value": "matilha-web (navegador)",
+            "type": "string"
+          },
+          {
+            "key": "addTokenTo",
+            "value": "header",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Minhas contas, com o token do navegador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 com o token do Authorization Code', () => pm.response.to.have.status(200));",
+                  "pm.test('só as contas de quem fez o login', () => {",
+                  "    pm.expect(pm.response.json().content).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts"
+              ]
+            }
+          }
+        }
+      ]
     }
   ],
   "auth": {
@@ -2204,12 +2628,13 @@
       "script": {
         "type": "text/javascript",
         "exec": [
-          "const username = pm.collectionVariables.get('username');",
-          "const token = pm.collectionVariables.get('accessToken');",
-          "const tokenUser = pm.collectionVariables.get('accessTokenUser');",
-          "const expiresAt = Number(pm.collectionVariables.get('accessTokenExpiresAt') || 0);",
-          "",
-          "if (!token || tokenUser !== username || Date.now() > expiresAt - 30000) {",
+          "function ensureToken(tokenVar, username, password) {",
+          "    const token = pm.collectionVariables.get(tokenVar);",
+          "    const tokenUser = pm.collectionVariables.get(tokenVar + 'User');",
+          "    const expiresAt = Number(pm.collectionVariables.get(tokenVar + 'ExpiresAt') || 0);",
+          "    if (token && tokenUser === username && Date.now() < expiresAt - 30000) {",
+          "        return;",
+          "    }",
           "    pm.sendRequest({",
           "        url: pm.collectionVariables.get('keycloakUrl') + '/realms/matilha/protocol/openid-connect/token',",
           "        method: 'POST',",
@@ -2220,20 +2645,23 @@
           "                { key: 'grant_type', value: 'password' },",
           "                { key: 'client_id', value: 'matilha-dev-cli' },",
           "                { key: 'username', value: username },",
-          "                { key: 'password', value: pm.collectionVariables.get('password') }",
+          "                { key: 'password', value: password }",
           "            ]",
           "        }",
           "    }, (err, res) => {",
           "        if (err || res.code !== 200) {",
-          "            console.error('Não foi possível pegar o token no Keycloak', err || res.text());",
+          "            console.error('Não foi possível pegar o token de ' + username + ' no Keycloak', err || res.text());",
           "            return;",
           "        }",
           "        const body = res.json();",
-          "        pm.collectionVariables.set('accessToken', body.access_token);",
-          "        pm.collectionVariables.set('accessTokenUser', username);",
-          "        pm.collectionVariables.set('accessTokenExpiresAt', String(Date.now() + body.expires_in * 1000));",
+          "        pm.collectionVariables.set(tokenVar, body.access_token);",
+          "        pm.collectionVariables.set(tokenVar + 'User', username);",
+          "        pm.collectionVariables.set(tokenVar + 'ExpiresAt', String(Date.now() + body.expires_in * 1000));",
           "    });",
-          "}"
+          "}",
+          "",
+          "ensureToken('accessToken', pm.collectionVariables.get('username'), pm.collectionVariables.get('password'));",
+          "ensureToken('brunoAccessToken', pm.collectionVariables.get('brunoUsername'), pm.collectionVariables.get('brunoPassword'));"
         ]
       }
     }

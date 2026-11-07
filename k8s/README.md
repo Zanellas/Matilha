@@ -173,7 +173,7 @@ kubectl port-forward svc/account 8081:8081
 
 O Swagger não aparece no cluster, porque os serviços rodam sem o perfil `dev`.
 
-**Postman:** a [collection](../postman/matilha-transfer.postman_collection.json) funciona sem mudança. As chamadas públicas vão pelo `baseUrl` (8080), e o depósito e os health checks dos serviços precisam dos `port-forward` acima. Rode as pastas 0 a 6 pelo Collection Runner.
+**Postman:** a [collection](../postman/matilha.postman_collection.json) funciona sem mudança. As chamadas públicas vão pelo `baseUrl` (8080), e o depósito e os health checks dos serviços precisam dos `port-forward` acima. Rode as pastas 0 a 6 pelo Collection Runner.
 
 ## Comandos úteis
 

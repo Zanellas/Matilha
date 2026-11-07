@@ -267,7 +267,7 @@ O Docker precisa estar rodando, porque os testes que sobem a aplicação usam um
 
 ### Postman
 
-A collection [postman/matilha-transfer.postman_collection.json](../postman/matilha-transfer.postman_collection.json) testa o fluxo inteiro pelo gateway, com o sistema rodando no perfil `dev`. Ela inclui depósito, sucesso, idempotência (conferindo que o saldo muda uma vez só), recusas, consulta, validação e notificações. Rode as pastas 0 a 6 pelo Collection Runner. A pasta 7 é manual: você para o account, cria uma transferência (`202 PENDING`), sobe o account de novo e confere que o reconciliador a marcou `COMPLETED`.
+A collection [postman/matilha.postman_collection.json](../postman/matilha.postman_collection.json) testa o fluxo inteiro pelo gateway, com o sistema rodando no perfil `dev`. Ela inclui depósito, sucesso, idempotência (conferindo que o saldo muda uma vez só), recusas, consulta, validação e notificações. Rode as pastas 0 a 6 pelo Collection Runner. A pasta 7 é manual: você para o account, cria uma transferência (`202 PENDING`), sobe o account de novo e confere que o reconciliador a marcou `COMPLETED`.
 
 Para rodar o serviço na IDE sem o banco do compose, use o `main` de `TestTransferApplication` (em `src/test`). Ele sobe a aplicação com o mesmo PostgreSQL dos testes. O account e o Kafka continuam vindo de fora (`docker compose up -d account kafka` na raiz). Sem o account, as transferências ficam `PENDING`. Sem o Kafka, os eventos esperam no outbox.
 
