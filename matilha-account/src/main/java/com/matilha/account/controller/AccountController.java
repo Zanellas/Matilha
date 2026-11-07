@@ -4,6 +4,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -30,8 +32,8 @@ public class AccountController {
     private final AccountService accountService;
 
     @PostMapping
-    public ResponseEntity<AccountResponseDto> create(@RequestBody @Valid CreateAccountRequestDto request) {
-        AccountResponseDto response = accountService.create(request);
+    public ResponseEntity<AccountResponseDto> create(@RequestBody @Valid CreateAccountRequestDto request, @AuthenticationPrincipal Jwt jwt) {
+        AccountResponseDto response = accountService.create(request, jwt.getSubject());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

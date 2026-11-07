@@ -16,7 +16,7 @@ class AccountMovementTest {
 
     @BeforeEach
     void setUp() {
-        account = new Account("12345", "Ana Silva", "52998224725", "ana.silva@example.com", "11987654321");
+        account = new Account("00000000-0000-0000-0003-000000000001", "12345","Ana Silva", "52998224725", "ana.silva@example.com", "11987654321");
         account.deposit(new BigDecimal("500.00"));
     }
 

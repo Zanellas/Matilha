@@ -15,3 +15,9 @@ FROM (VALUES ('00000000-0000-0000-0001-000000010001'::uuid, '00000000-0000-0000-
      AS seed (id, account_id, operation_id, amount)
 JOIN accounts a ON a.id = seed.account_id
 ON CONFLICT (operation_id, type) DO NOTHING;
+
+UPDATE accounts SET owner_id = '00000000-0000-0000-0003-000000000001'
+WHERE account_number = '10001' AND owner_id IS NULL;
+
+UPDATE accounts SET owner_id = '00000000-0000-0000-0003-000000000002'
+WHERE account_number = '10002' AND owner_id IS NULL;

@@ -17,6 +17,7 @@ import com.matilha.account.exception.ErrorCode;
 
 class AccountTest {
 
+    private static final String OWNER = "00000000-0000-0000-0003-000000000001";
     private static final String ACCOUNT_NUMBER = "12345";
     private static final String HOLDER_NAME = "Ana Silva";
     private static final String CPF = "52998224725";
@@ -27,7 +28,7 @@ class AccountTest {
 
     @BeforeEach
     void setUp() {
-        account = new Account(ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, PHONE);
+        account = new Account(OWNER,ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, PHONE);
     }
 
     @Nested
@@ -35,6 +36,7 @@ class AccountTest {
 
         @Test
         void shouldCreateActiveAccountWithZeroBalance() {
+            assertThat(account.getOwnerId()).isEqualTo(OWNER);
             assertThat(account.getAccountNumber()).isEqualTo(ACCOUNT_NUMBER);
             assertThat(account.getHolderName()).isEqualTo(HOLDER_NAME);
             assertThat(account.getHolderDocument()).isEqualTo(CPF);
@@ -45,11 +47,21 @@ class AccountTest {
             assertThat(account.getBalance().scale()).isEqualTo(2);
         }
 
+        /** Toda conta nova tem dono: o banco aceita NULL só para as contas criadas antes da Fase 4. */
+        @ParameterizedTest
+        @NullAndEmptySource
+        @ValueSource(strings = { "   " })
+        void shouldRejectBlankOwner(String ownerId) {
+            assertThatThrownBy(() -> new Account(ownerId, ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, PHONE))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("ownerId must not be blank");
+        }
+
         @ParameterizedTest
         @NullAndEmptySource
         @ValueSource(strings = { "   " })
         void shouldRejectBlankAccountNumber(String accountNumber) {
-            assertThatThrownBy(() -> new Account(accountNumber, HOLDER_NAME, CPF, EMAIL, PHONE))
+            assertThatThrownBy(() -> new Account(OWNER,accountNumber, HOLDER_NAME, CPF, EMAIL, PHONE))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("accountNumber must not be blank");
         }
@@ -58,7 +70,7 @@ class AccountTest {
         @NullAndEmptySource
         @ValueSource(strings = { "   " })
         void shouldRejectBlankHolderName(String holderName) {
-            assertThatThrownBy(() -> new Account(ACCOUNT_NUMBER, holderName, CPF, EMAIL, PHONE))
+            assertThatThrownBy(() -> new Account(OWNER,ACCOUNT_NUMBER, holderName, CPF, EMAIL, PHONE))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("holderName must not be blank");
         }
@@ -77,7 +89,7 @@ class AccountTest {
 
         @Test
         void shouldStoreFormattedCpfAsDigitsOnly() {
-            Account formatted = new Account(ACCOUNT_NUMBER, HOLDER_NAME, "529.982.247-25", EMAIL, PHONE);
+            Account formatted = new Account(OWNER,ACCOUNT_NUMBER, HOLDER_NAME, "529.982.247-25", EMAIL, PHONE);
 
             assertThat(formatted.getHolderDocument()).isEqualTo("52998224725");
         }
@@ -86,7 +98,7 @@ class AccountTest {
         @NullAndEmptySource
         @ValueSource(strings = { "   " })
         void shouldRejectBlankDocument(String document) {
-            assertThatThrownBy(() -> new Account(ACCOUNT_NUMBER, HOLDER_NAME, document, EMAIL, PHONE))
+            assertThatThrownBy(() -> new Account(OWNER,ACCOUNT_NUMBER, HOLDER_NAME, document, EMAIL, PHONE))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("holderDocument must not be blank");
         }
@@ -94,7 +106,7 @@ class AccountTest {
         @ParameterizedTest
         @ValueSource(strings = { "1234567890", "123456789012", "529.982.247", "abc" })
         void shouldRejectDocumentWithoutElevenDigits(String document) {
-            assertThatThrownBy(() -> new Account(ACCOUNT_NUMBER, HOLDER_NAME, document, EMAIL, PHONE))
+            assertThatThrownBy(() -> new Account(OWNER,ACCOUNT_NUMBER, HOLDER_NAME, document, EMAIL, PHONE))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("holderDocument must have 11 digits");
         }
@@ -105,7 +117,7 @@ class AccountTest {
 
         @Test
         void shouldStoreEmailTrimmedAndInLowerCase() {
-            Account mixedCase = new Account(ACCOUNT_NUMBER, HOLDER_NAME, CPF, "  Ana.Silva@Example.COM ", PHONE);
+            Account mixedCase = new Account(OWNER,ACCOUNT_NUMBER, HOLDER_NAME, CPF, "  Ana.Silva@Example.COM ", PHONE);
 
             assertThat(mixedCase.getHolderEmail()).isEqualTo("ana.silva@example.com");
         }
@@ -114,7 +126,7 @@ class AccountTest {
         @NullAndEmptySource
         @ValueSource(strings = { "   " })
         void shouldRejectBlankEmail(String email) {
-            assertThatThrownBy(() -> new Account(ACCOUNT_NUMBER, HOLDER_NAME, CPF, email, PHONE))
+            assertThatThrownBy(() -> new Account(OWNER,ACCOUNT_NUMBER, HOLDER_NAME, CPF, email, PHONE))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("holderEmail must not be blank");
         }
@@ -125,14 +137,14 @@ class AccountTest {
 
         @Test
         void shouldStoreFormattedMobilePhoneAsDigitsOnly() {
-            Account formatted = new Account(ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, "(11) 98765-4321");
+            Account formatted = new Account(OWNER,ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, "(11) 98765-4321");
 
             assertThat(formatted.getHolderPhone()).isEqualTo("11987654321");
         }
 
         @Test
         void shouldAcceptLandlineWithTenDigits() {
-            Account landline = new Account(ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, "(11) 3456-7890");
+            Account landline = new Account(OWNER,ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, "(11) 3456-7890");
 
             assertThat(landline.getHolderPhone()).isEqualTo("1134567890");
         }
@@ -141,7 +153,7 @@ class AccountTest {
         @NullAndEmptySource
         @ValueSource(strings = { "   " })
         void shouldRejectBlankPhone(String phone) {
-            assertThatThrownBy(() -> new Account(ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, phone))
+            assertThatThrownBy(() -> new Account(OWNER,ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, phone))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("holderPhone must not be blank");
         }
@@ -149,7 +161,7 @@ class AccountTest {
         @ParameterizedTest
         @ValueSource(strings = { "987654321", "119876543210", "(11) 9876" })
         void shouldRejectPhoneWithInvalidLength(String phone) {
-            assertThatThrownBy(() -> new Account(ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, phone))
+            assertThatThrownBy(() -> new Account(OWNER,ACCOUNT_NUMBER, HOLDER_NAME, CPF, EMAIL, phone))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("holderPhone must have 10 or 11 digits");
         }
