@@ -26,8 +26,8 @@ public class AccountService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     @Transactional
-    public AccountResponseDto create(CreateAccountRequestDto request) {
-        Account account = new Account(generateUniqueAccountNumber(), request.holderName(), request.holderDocument(),
+    public AccountResponseDto create(CreateAccountRequestDto request, String ownerId) {
+        Account account = new Account(ownerId, generateUniqueAccountNumber(), request.holderName(), request.holderDocument(),
                 request.holderEmail(), request.holderPhone());
         Account saved = accountRepository.save(account);
         return toResponse(saved);

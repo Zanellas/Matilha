@@ -53,7 +53,7 @@ class InternalTransferServiceTest {
     private InternalTransferService transferService;
 
     private static Account accountWithBalance(String accountNumber, String balance) {
-        Account account = new Account(accountNumber, "Holder " + accountNumber, "52998224725",
+        Account account = new Account("owner-" + accountNumber, accountNumber, "Holder " + accountNumber, "52998224725",
                 "holder@example.com", "11987654321");
         if (new BigDecimal(balance).signum() > 0) {
             account.deposit(new BigDecimal(balance));

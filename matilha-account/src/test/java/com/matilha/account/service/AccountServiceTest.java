@@ -38,6 +38,7 @@ import com.matilha.account.repository.AccountRepository;
 @ExtendWith(MockitoExtension.class)
 class AccountServiceTest {
 
+    private static final String ANA = "00000000-0000-0000-0003-000000000001";
     private static final String EMAIL = "ana.silva@example.com";
     private static final String PHONE = "11987654321";
     private static final BigDecimal ZERO = new BigDecimal("0.00");
@@ -49,7 +50,7 @@ class AccountServiceTest {
     private AccountService accountService;
 
     private static Account newAccount(String accountNumber, String holderName) {
-        return new Account(accountNumber, holderName, "52998224725", EMAIL, PHONE);
+        return new Account(ANA, accountNumber, holderName, "52998224725", EMAIL, PHONE);
     }
 
     private static AccountResponseDto responseFor(String accountNumber, String holderName, AccountStatus status) {
@@ -67,12 +68,13 @@ class AccountServiceTest {
             when(accountRepository.existsByAccountNumber(anyString())).thenReturn(false);
             when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            AccountResponseDto response = accountService.create(request);
+            AccountResponseDto response = accountService.create(request, ANA);
 
             ArgumentCaptor<Account> captor = ArgumentCaptor.forClass(Account.class);
             verify(accountRepository).save(captor.capture());
             Account saved = captor.getValue();
 
+            assertThat(saved.getOwnerId()).isEqualTo(ANA);
             assertThat(saved.getHolderName()).isEqualTo("Ana Silva");
             assertThat(saved.getStatus()).isEqualTo(AccountStatus.ACTIVE);
             assertThat(saved.getBalance()).isEqualByComparingTo("0.00");
@@ -85,7 +87,7 @@ class AccountServiceTest {
             when(accountRepository.existsByAccountNumber(anyString())).thenReturn(false);
             when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            accountService.create(request);
+            accountService.create(request, ANA);
 
             ArgumentCaptor<Account> captor = ArgumentCaptor.forClass(Account.class);
             verify(accountRepository).save(captor.capture());
@@ -101,7 +103,7 @@ class AccountServiceTest {
             when(accountRepository.existsByAccountNumber(anyString())).thenReturn(false);
             when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            AccountResponseDto response = accountService.create(request);
+            AccountResponseDto response = accountService.create(request, ANA);
 
             assertThat(response.accountNumber()).matches("[1-9]\\d{4}");
         }
@@ -111,7 +113,7 @@ class AccountServiceTest {
             when(accountRepository.existsByAccountNumber(anyString())).thenReturn(true, true, false);
             when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            AccountResponseDto response = accountService.create(request);
+            AccountResponseDto response = accountService.create(request, ANA);
 
             ArgumentCaptor<String> numberCaptor = ArgumentCaptor.forClass(String.class);
             verify(accountRepository, times(3)).existsByAccountNumber(numberCaptor.capture());
@@ -123,9 +125,19 @@ class AccountServiceTest {
             when(accountRepository.existsByAccountNumber(anyString())).thenReturn(false);
             CreateAccountRequestDto invalidRequest = new CreateAccountRequestDto(" ", "52998224725", EMAIL, PHONE);
 
-            assertThatThrownBy(() -> accountService.create(invalidRequest))
+            assertThatThrownBy(() -> accountService.create(invalidRequest, ANA))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("holderName must not be blank");
+            verify(accountRepository, never()).save(any());
+        }
+
+        @Test
+        void shouldNotSaveWithoutOwner() {
+            when(accountRepository.existsByAccountNumber(anyString())).thenReturn(false);
+
+            assertThatThrownBy(() -> accountService.create(request, null))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("ownerId must not be blank");
             verify(accountRepository, never()).save(any());
         }
     }

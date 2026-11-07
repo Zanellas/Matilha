@@ -37,6 +37,9 @@ public class Account {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(updatable = false)
+    private String ownerId;
+
     @Column(unique = true, nullable = false, updatable = false, length = 5)
     private String accountNumber;
 
@@ -74,8 +77,9 @@ public class Account {
     @Version
     private Long version;
 
-    public Account(String accountNumber, String holderName, String holderDocument, String holderEmail,
+    public Account(String ownerId, String accountNumber, String holderName, String holderDocument, String holderEmail,
             String holderPhone) {
+        this.ownerId = requireNotBlank(ownerId, "ownerId");
         this.accountNumber = requireNotBlank(accountNumber, "accountNumber");
         this.holderName = requireNotBlank(holderName, "holderName");
         this.holderDocument = normalizeDocument(holderDocument);

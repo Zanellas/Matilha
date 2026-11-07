@@ -59,7 +59,7 @@ class MoneyMovementConcurrencyTest {
     }
 
     private void givenAccount(String accountNumber, String balance) {
-        Account account = new Account(accountNumber, "Holder " + accountNumber, "52998224725",
+        Account account = new Account("owner-" + accountNumber, accountNumber, "Holder " + accountNumber, "52998224725",
                 "holder" + accountNumber + "@example.com", "11987654321");
         if (new BigDecimal(balance).signum() > 0) {
             account.deposit(new BigDecimal(balance));

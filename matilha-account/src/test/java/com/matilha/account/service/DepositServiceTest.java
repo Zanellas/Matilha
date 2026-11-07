@@ -48,7 +48,7 @@ class DepositServiceTest {
     private DepositService depositService;
 
     private static Account accountWithBalance(String balance) {
-        Account account = new Account(ACCOUNT_NUMBER, "Ana Silva", "52998224725",
+        Account account = new Account("00000000-0000-0000-0003-000000000001", ACCOUNT_NUMBER, "Ana Silva", "52998224725",
                 "ana.silva@example.com", "11987654321");
         if (new BigDecimal(balance).signum() > 0) {
             account.deposit(new BigDecimal(balance));

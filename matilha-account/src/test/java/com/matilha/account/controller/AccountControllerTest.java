@@ -124,7 +124,7 @@ class AccountControllerTest {
         void shouldReturnCreatedWithAccount() throws Exception {
             CreateAccountRequestDto request = new CreateAccountRequestDto(
                     "Ana Silva", "529.982.247-25", "ana.silva@example.com", "(11) 98765-4321");
-            when(accountService.create(request)).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
+            when(accountService.create(request, ANA)).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
 
             mockMvc.perform(post("/accounts").with(customer())
                     .contentType(MediaType.APPLICATION_JSON)
@@ -139,9 +139,28 @@ class AccountControllerTest {
                     .andExpect(jsonPath("$.holderDocument").doesNotExist());
         }
 
+        /**
+         * O dono vem do sub do token, nunca do corpo (mass assignment, OWASP API3:2023).
+         * A Ana manda o id do Bruno no JSON: o campo é ignorado e a conta fica com o dono do token.
+         */
+        @Test
+        void shouldTakeOwnerFromTokenAndIgnoreOwnerInBody() throws Exception {
+            when(accountService.create(any(), any())).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
+
+            mockMvc.perform(post("/accounts").with(customer())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(VALID_REQUEST.replace("{", "{\n  \"ownerId\": \"00000000-0000-0000-0003-000000000002\",")))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.ownerId").doesNotExist());
+
+            verify(accountService).create(
+                    new CreateAccountRequestDto("Ana Silva", "529.982.247-25", "ana.silva@example.com", "(11) 98765-4321"),
+                    ANA);
+        }
+
         @Test
         void shouldAcceptUnformattedCpfAndPhone() throws Exception {
-            when(accountService.create(any())).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
+            when(accountService.create(any(), any())).thenReturn(responseFor("12345", "Ana Silva", AccountStatus.ACTIVE));
 
             mockMvc.perform(post("/accounts").with(customer())
                     .contentType(MediaType.APPLICATION_JSON)
@@ -165,7 +184,7 @@ class AccountControllerTest {
                     .andExpect(jsonPath("$.errors.holderEmail").exists())
                     .andExpect(jsonPath("$.errors.holderPhone").exists());
 
-            verify(accountService, never()).create(any());
+            verify(accountService, never()).create(any(), any());
         }
 
         @Test
@@ -179,7 +198,7 @@ class AccountControllerTest {
                     .andExpect(jsonPath("$.errors.holderEmail").exists())
                     .andExpect(jsonPath("$.errors.holderPhone").exists());
 
-            verify(accountService, never()).create(any());
+            verify(accountService, never()).create(any(), any());
         }
 
         @ParameterizedTest
@@ -191,7 +210,7 @@ class AccountControllerTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.holderDocument").exists());
 
-            verify(accountService, never()).create(any());
+            verify(accountService, never()).create(any(), any());
         }
 
         @ParameterizedTest
@@ -203,7 +222,7 @@ class AccountControllerTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.holderEmail").exists());
 
-            verify(accountService, never()).create(any());
+            verify(accountService, never()).create(any(), any());
         }
 
         @ParameterizedTest
@@ -215,7 +234,7 @@ class AccountControllerTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.holderPhone").exists());
 
-            verify(accountService, never()).create(any());
+            verify(accountService, never()).create(any(), any());
         }
 
         @Test
@@ -226,7 +245,7 @@ class AccountControllerTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.status").value(400));
 
-            verify(accountService, never()).create(any());
+            verify(accountService, never()).create(any(), any());
         }
     }
 
