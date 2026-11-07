@@ -4,13 +4,11 @@
 )
 
 $ErrorActionPreference = "Stop"
-$Base = "http://localhost:8080"
+. (Join-Path $PSScriptRoot "comum.ps1")
 $AccessLog = @(
     "SERVER_TOMCAT_ACCESSLOG_ENABLED", "SERVER_TOMCAT_ACCESSLOG_DIRECTORY", "SERVER_TOMCAT_ACCESSLOG_PREFIX",
     "SERVER_TOMCAT_ACCESSLOG_SUFFIX", "SERVER_TOMCAT_ACCESSLOG_FILE_DATE_FORMAT", "SERVER_TOMCAT_ACCESSLOG_ROTATE"
 )
-
-function Saldo($conta) { (Invoke-RestMethod "$Base/accounts/$conta").balance }
 
 if ($ContarPorPod) {
     Write-Host "Ligando o access log do account..." -ForegroundColor Cyan
@@ -21,14 +19,15 @@ if ($ContarPorPod) {
 }
 
 $antes = @{ a = Saldo "10001"; b = Saldo "10002" }
+$tokens = @{ "10001" = Token "ana"; "10002" = Token "bruno" }
 $inicio = Get-Date
 
 $envio = {
-    param($base, $origem, $destino)
+    param($base, $token, $origem, $destino)
     $body = @{ sourceAccountNumber = $origem; targetAccountNumber = $destino; amount = 10.00 } | ConvertTo-Json
     try {
         (Invoke-RestMethod -Method Post -Uri "$base/transfers" -ContentType "application/json" `
-            -Headers @{ "Idempotency-Key" = [guid]::NewGuid().ToString() } -Body $body).status
+            -Headers @{ Authorization = "Bearer $token"; "Idempotency-Key" = [guid]::NewGuid().ToString() } -Body $body).status
     }
     catch {
         if ($_.Exception.Response) { "HTTP " + [int]$_.Exception.Response.StatusCode } else { "sem resposta" }
@@ -40,7 +39,7 @@ $pool = [runspacefactory]::CreateRunspacePool(1, 20)
 $pool.Open()
 $tarefas = 1..$Quantidade | ForEach-Object {
     $origem, $destino = if ($_ % 2) { "10001", "10002" } else { "10002", "10001" }
-    $ps = [powershell]::Create().AddScript($envio).AddArgument($Base).AddArgument($origem).AddArgument($destino)
+    $ps = [powershell]::Create().AddScript($envio).AddArgument($Base).AddArgument($tokens[$origem]).AddArgument($origem).AddArgument($destino)
     $ps.RunspacePool = $pool
     [pscustomobject]@{ PS = $ps; Handle = $ps.BeginInvoke() }
 }

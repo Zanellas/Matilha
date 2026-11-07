@@ -5,9 +5,7 @@
 )
 
 $ErrorActionPreference = "Stop"
-$Base = "http://localhost:8080"
-
-function Saldo($conta) { (Invoke-RestMethod "$Base/accounts/$conta").balance }
+. (Join-Path $PSScriptRoot "comum.ps1")
 
 $antes = @{ a = Saldo "10001"; b = Saldo "10002" }
 
@@ -21,14 +19,17 @@ while ((Get-Date) -lt $fim) {
     $i++
     $origem, $destino = if ($i % 2) { "10001", "10002" } else { "10002", "10001" }
     $body = @{ sourceAccountNumber = $origem; targetAccountNumber = $destino; amount = 1.00 } | ConvertTo-Json
+    $usuario = DonoDe $origem
+    $cabecalhos = Autorizacao $usuario
+    $cabecalhos["Idempotency-Key"] = [guid]::NewGuid().ToString()
     try {
         $r = Invoke-RestMethod -Method Post -Uri "$Base/transfers" -ContentType "application/json" `
-            -Headers @{ "Idempotency-Key" = [guid]::NewGuid().ToString() } -Body $body -TimeoutSec 15
-        $resultados += [pscustomobject]@{ id = $r.id; resultado = $r.status }
+            -Headers $cabecalhos -Body $body -TimeoutSec 15
+        $resultados += [pscustomobject]@{ id = $r.id; usuario = $usuario; resultado = $r.status }
     }
     catch {
         $codigo = if ($_.Exception.Response) { "HTTP " + [int]$_.Exception.Response.StatusCode } else { "sem resposta" }
-        $resultados += [pscustomobject]@{ id = $null; resultado = $codigo }
+        $resultados += [pscustomobject]@{ id = $null; usuario = $usuario; resultado = $codigo }
     }
     Start-Sleep -Milliseconds 200
 }
@@ -41,7 +42,7 @@ $pendentes = @($resultados | Where-Object resultado -eq "PENDING")
 if ($pendentes.Count -gt 0) {
     Write-Host "Esperando o reconciliador resolver $($pendentes.Count) pendente(s)..." -ForegroundColor Cyan
     Start-Sleep -Seconds 90
-    $pendentes | ForEach-Object { (Invoke-RestMethod "$Base/transfers/$($_.id)").status } |
+    $pendentes | ForEach-Object { (Invoke-RestMethod "$Base/transfers/$($_.id)" -Headers (Autorizacao $_.usuario)).status } |
     Group-Object | Format-Table Count, Name -AutoSize
 }
 

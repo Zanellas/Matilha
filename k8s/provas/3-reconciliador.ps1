@@ -9,7 +9,7 @@
 # Se o script for interrompido no meio, suba o account de novo: kubectl scale deployment/account --replicas=2
 
 $ErrorActionPreference = "Stop"
-$Base = "http://localhost:8080"
+. (Join-Path $PSScriptRoot "comum.ps1")
 $Replicas = (kubectl get deployment account -o jsonpath="{.spec.replicas}")
 $inicio = Get-Date
 
@@ -19,11 +19,13 @@ kubectl wait --for=delete pod -l app=account --timeout=90s | Out-Null
 
 Write-Host "Criando uma transferência com o account fora do ar..." -ForegroundColor Cyan
 $body = @{ sourceAccountNumber = "10001"; targetAccountNumber = "10002"; amount = 25.00 } | ConvertTo-Json
+$cabecalhos = Autorizacao "ana"
+$cabecalhos["Idempotency-Key"] = [guid]::NewGuid().ToString()
 $resposta = Invoke-WebRequest -Method Post -Uri "$Base/transfers" -ContentType "application/json" `
-    -Headers @{ "Idempotency-Key" = [guid]::NewGuid().ToString() } -Body $body -UseBasicParsing
+    -Headers $cabecalhos -Body $body -UseBasicParsing
 $id = ($resposta.Content | ConvertFrom-Json).id
 "HTTP $($resposta.StatusCode), Location: $($resposta.Headers.Location)"
-"status: $((Invoke-RestMethod "$Base/transfers/$id").status)"
+"status: $((Invoke-RestMethod "$Base/transfers/$id" -Headers (Autorizacao "ana")).status)"
 
 Write-Host "`nSubindo o account de novo (replicas=$Replicas)..." -ForegroundColor Cyan
 kubectl scale deployment/account --replicas=$Replicas | Out-Null
@@ -33,7 +35,7 @@ Write-Host "`nEsperando o reconciliador (roda a cada 60s e só pega pendentes co
 $limite = (Get-Date).AddMinutes(3)
 do {
     Start-Sleep -Seconds 10
-    $status = (Invoke-RestMethod "$Base/transfers/$id").status
+    $status = (Invoke-RestMethod "$Base/transfers/$id" -Headers (Autorizacao "ana")).status
     "$(Get-Date -Format HH:mm:ss)  $status"
 } while ($status -eq "PENDING" -and (Get-Date) -lt $limite)
 
