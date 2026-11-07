@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Matilha - Transfer e Notification",
-    "description": "Roteiro de testes do fluxo inteiro: matilha-transfer, matilha-account e matilha-notification, rodando localmente com o perfil dev (docker compose up --build na raiz).\n\nAs chamadas públicas passam pelo matilha-gateway ({{baseUrl}}, porta 8080), que é a porta de entrada oficial. Ficam direto no serviço só o que é interno (POST /internal/transfers no account) e os health checks dos serviços, porque o gateway não tem rota para /internal/** nem para o /actuator dos serviços.\n\nRode as pastas 0 a 6 em ordem com o Collection Runner. A pasta 7 é manual: pare o account antes de rodar.\n\nAs requisições usam as contas de exemplo do perfil dev (10001 a 10005).\n\nAs recusas são conferidas pelo code do Problem Details (INSUFFICIENT_BALANCE, ACCOUNT_NOT_FOUND, ACCOUNT_INACTIVE), que é o contrato. O detail é texto e pode mudar.\n\nCada transferência COMPLETED ou FAILED gera um evento no tópico matilha.transfer.events, e o notification transforma o evento em notificações. A pasta 6 confere essas notificações pelo transferId das pastas 2 e 3. Para ver os eventos, abra a Kafka UI (http://localhost:8090).",
+    "description": "Roteiro de testes do fluxo inteiro: matilha-transfer, matilha-account e matilha-notification, rodando localmente com o perfil dev (docker compose up --build na raiz).\n\nAs chamadas públicas passam pelo matilha-gateway ({{baseUrl}}, porta 8080), que é a porta de entrada oficial. Ficam direto no serviço só o que é interno (POST /internal/transfers no account) e os health checks dos serviços, porque o gateway não tem rota para /internal/** nem para o /actuator dos serviços.\n\nRode as pastas 0 a 6 em ordem com o Collection Runner. A pasta 7 é manual: pare o account antes de rodar.\n\nAs requisições usam as contas de exemplo do perfil dev (10001 a 10005).\n\nAs recusas são conferidas pelo code do Problem Details (INSUFFICIENT_BALANCE, ACCOUNT_NOT_FOUND, ACCOUNT_INACTIVE), que é o contrato. O detail é texto e pode mudar.\n\nCada transferência COMPLETED ou FAILED gera um evento no tópico matilha.transfer.events, e o notification transforma o evento em notificações. A pasta 6 confere essas notificações pelo transferId das pastas 2 e 3. Para ver os eventos, abra a Kafka UI (http://localhost:8090).\n\nAutenticação: o script da coleção pega um token no Keycloak (http://localhost:8180) antes das requisições, com o client matilha-dev-cli e o usuário das variáveis username e password (ana por padrão). O token fica na variável accessToken e é renovado quando falta menos de 30 segundos para vencer, ou quando o username muda. Esse client aceita usuário e senha direto e existe só para desenvolvimento. As chamadas diretas aos serviços (health e /internal/**) vão sem token, porque são públicas nesta fase.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -20,6 +20,30 @@
     {
       "key": "notificationUrl",
       "value": "http://localhost:8083"
+    },
+    {
+      "key": "keycloakUrl",
+      "value": "http://localhost:8180"
+    },
+    {
+      "key": "username",
+      "value": "ana"
+    },
+    {
+      "key": "password",
+      "value": "ana123"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "accessTokenUser",
+      "value": ""
+    },
+    {
+      "key": "accessTokenExpiresAt",
+      "value": ""
     },
     {
       "key": "amount",
@@ -56,7 +80,7 @@
   ],
   "item": [
     {
-      "name": "0. Gateway",
+      "name": "0. Gateway e segurança",
       "description": "O gateway é a única porta de entrada. Só /accounts, /transfers e /notifications têm rota; o resto, inclusive /internal/**, recebe 404 do próprio gateway e nunca chega ao serviço (ADR-0012).",
       "item": [
         {
@@ -85,6 +109,9 @@
                 "actuator",
                 "health"
               ]
+            },
+            "auth": {
+              "type": "noauth"
             }
           }
         },
@@ -173,6 +200,303 @@
               ]
             }
           }
+        },
+        {
+          "name": "Sem token pelo gateway (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('Problem Details com code UNAUTHENTICATED', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "    pm.expect(pm.response.json().code).to.eql('UNAUTHENTICATED');",
+                  "});",
+                  "pm.test('Header WWW-Authenticate: Bearer', () => pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'));",
+                  "pm.test('O motivo da recusa não aparece no corpo', () => pm.expect(pm.response.text()).to.not.include('Jwt'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/10001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10001"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Token falso pelo gateway (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('Problem Details com code UNAUTHENTICATED', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "    pm.expect(pm.response.json().code).to.eql('UNAUTHENTICATED');",
+                  "});",
+                  "pm.test('Header WWW-Authenticate: Bearer', () => pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'));",
+                  "pm.test('O motivo da recusa não aparece no corpo', () => pm.expect(pm.response.text()).to.not.include('Jwt'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/10001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10001"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "abc.def.ghi",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Caminho interno sem token pelo gateway: 401 antes do 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('Problem Details com code UNAUTHENTICATED', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "    pm.expect(pm.response.json().code).to.eql('UNAUTHENTICATED');",
+                  "});",
+                  "pm.test('Header WWW-Authenticate: Bearer', () => pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'));",
+                  "pm.test('O motivo da recusa não aparece no corpo', () => pm.expect(pm.response.text()).to.not.include('Jwt'));",
+                  "pm.test('Seguro por padrão: sem token, nem chega a procurar a rota', () => pm.expect(pm.response.json().code).to.not.eql('ROUTE_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/internal/deposits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "deposits"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Account direto sem token (401: a porta de trás está fechada)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('Problem Details com code UNAUTHENTICATED', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "    pm.expect(pm.response.json().code).to.eql('UNAUTHENTICATED');",
+                  "});",
+                  "pm.test('Header WWW-Authenticate: Bearer', () => pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'));",
+                  "pm.test('O motivo da recusa não aparece no corpo', () => pm.expect(pm.response.text()).to.not.include('Jwt'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{accountUrl}}/accounts/10001",
+              "host": [
+                "{{accountUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10001"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Transfer direto sem token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('Problem Details com code UNAUTHENTICATED', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "    pm.expect(pm.response.json().code).to.eql('UNAUTHENTICATED');",
+                  "});",
+                  "pm.test('Header WWW-Authenticate: Bearer', () => pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'));",
+                  "pm.test('O motivo da recusa não aparece no corpo', () => pm.expect(pm.response.text()).to.not.include('Jwt'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{transferUrl}}/transfers/{{$guid}}",
+              "host": [
+                "{{transferUrl}}"
+              ],
+              "path": [
+                "transfers",
+                "{{$guid}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Notification direto sem token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('Problem Details com code UNAUTHENTICATED', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "    pm.expect(pm.response.json().code).to.eql('UNAUTHENTICATED');",
+                  "});",
+                  "pm.test('Header WWW-Authenticate: Bearer', () => pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'));",
+                  "pm.test('O motivo da recusa não aparece no corpo', () => pm.expect(pm.response.text()).to.not.include('Jwt'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationUrl}}/notifications?accountNumber=10001",
+              "host": [
+                "{{notificationUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "accountNumber",
+                  "value": "10001"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Account direto com token (200: o serviço valida sozinho)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK com o token da coleção, sem passar pelo gateway', () => pm.response.to.have.status(200));",
+                  "pm.test('Conta 10001', () => pm.expect(pm.response.json().accountNumber).to.eql('10001'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{accountUrl}}/accounts/10001",
+              "host": [
+                "{{accountUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10001"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cliente tentando bloquear uma conta (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden: o token é válido, mas o papel customer não basta', () => pm.response.to.have.status(403));",
+                  "pm.test('Problem Details com code ACCESS_DENIED', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "    pm.expect(pm.response.json().code).to.eql('ACCESS_DENIED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/10003/block",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "10003",
+                "block"
+              ]
+            }
+          }
         }
       ]
     },
@@ -206,6 +530,9 @@
                 "actuator",
                 "health"
               ]
+            },
+            "auth": {
+              "type": "noauth"
             }
           }
         },
@@ -236,6 +563,9 @@
                 "actuator",
                 "health"
               ]
+            },
+            "auth": {
+              "type": "noauth"
             }
           }
         },
@@ -266,6 +596,9 @@
                 "actuator",
                 "health"
               ]
+            },
+            "auth": {
+              "type": "noauth"
             }
           }
         },
@@ -319,6 +652,9 @@
                 "internal",
                 "deposits"
               ]
+            },
+            "auth": {
+              "type": "noauth"
             }
           }
         },
@@ -705,6 +1041,9 @@
                 "internal",
                 "transfers"
               ]
+            },
+            "auth": {
+              "type": "noauth"
             }
           }
         },
@@ -1847,6 +2186,56 @@
           }
         }
       ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const username = pm.collectionVariables.get('username');",
+          "const token = pm.collectionVariables.get('accessToken');",
+          "const tokenUser = pm.collectionVariables.get('accessTokenUser');",
+          "const expiresAt = Number(pm.collectionVariables.get('accessTokenExpiresAt') || 0);",
+          "",
+          "if (!token || tokenUser !== username || Date.now() > expiresAt - 30000) {",
+          "    pm.sendRequest({",
+          "        url: pm.collectionVariables.get('keycloakUrl') + '/realms/matilha/protocol/openid-connect/token',",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+          "        body: {",
+          "            mode: 'urlencoded',",
+          "            urlencoded: [",
+          "                { key: 'grant_type', value: 'password' },",
+          "                { key: 'client_id', value: 'matilha-dev-cli' },",
+          "                { key: 'username', value: username },",
+          "                { key: 'password', value: pm.collectionVariables.get('password') }",
+          "            ]",
+          "        }",
+          "    }, (err, res) => {",
+          "        if (err || res.code !== 200) {",
+          "            console.error('Não foi possível pegar o token no Keycloak', err || res.text());",
+          "            return;",
+          "        }",
+          "        const body = res.json();",
+          "        pm.collectionVariables.set('accessToken', body.access_token);",
+          "        pm.collectionVariables.set('accessTokenUser', username);",
+          "        pm.collectionVariables.set('accessTokenExpiresAt', String(Date.now() + body.expires_in * 1000));",
+          "    });",
+          "}"
+        ]
+      }
     }
   ]
 }
