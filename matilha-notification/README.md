@@ -1,12 +1,12 @@
 # matilha-notification
 
-Serviço que consome os eventos de transferência publicados pelo [matilha-transfer](../matilha-transfer/), registra uma notificação para cada conta envolvida e permite consultar as notificações de uma conta.
+Serviço que consome os eventos de transferência publicados pelo [matilha-transfer](../matilha-transfer/), registra uma notificação para cada pessoa envolvida e permite que cada usuário consulte as próprias notificações.
 
 Faz parte do [Matilha](../README.md).
 
 ## Por que ele não manda e-mail
 
-Os dados do titular (nome, e-mail, telefone) moram no matilha-account, e os eventos de transferência levam só números de conta, valor e código do resultado. Para mandar um e-mail de verdade, o notification teria que consultar o account de forma síncrona a cada evento, ou o evento teria que carregar dados pessoais. As duas opções anulam o motivo de usar eventos.
+Os dados do titular (nome, e-mail, telefone) moram no matilha-account, e os eventos de transferência levam só números de conta, valor, código do resultado e ids opacos do Keycloak. Para mandar um e-mail de verdade, o notification teria que consultar o account de forma síncrona a cada evento, ou o evento teria que carregar dados pessoais. As duas opções anulam o motivo de usar eventos.
 
 Por isso ele é mínimo: registra no banco e no log que a notificação foi gerada para a conta. Isso basta para mostrar o padrão que importa aqui, que é o consumo idempotente com Dead Letter Topic.
 
@@ -56,6 +56,10 @@ Para gerar notificações, o transfer (e o account) precisam estar rodando. Sem 
 |---|---|---|
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Endereço do Kafka. No Docker, o `compose.yaml` aponta para `kafka:29092`, o listener interno do broker. |
 | `NOTIFICATION_DB_POOL_SIZE` | `5` | Tamanho do pool de conexões. É menor que nos outros serviços porque o consumidor processa um evento por vez. |
+| `KEYCLOAK_JWK_SET_URI` | `http://localhost:8180/realms/matilha/protocol/openid-connect/certs` | De onde vêm as chaves públicas do Keycloak. No Docker, `http://keycloak:8080/...` |
+| `KEYCLOAK_ISSUER_URI` | `http://localhost:8180/realms/matilha` | O `iss` que o token precisa trazer. É o mesmo no Docker |
+
+O `GET /notifications` exige um token do [Keycloak](../keycloak/), mesmo chamado direto na 8083. No modo 2b, suba o Keycloak também (`docker compose up -d keycloak`, na raiz). O consumidor do Kafka não depende do Keycloak.
 
 ## Perfis
 
@@ -68,21 +72,25 @@ Com o perfil `dev` ativo:
 - Swagger UI: http://localhost:8083/swagger-ui.html
 - OpenAPI (JSON): http://localhost:8083/v3/api-docs
 
-Health check: http://localhost:8083/actuator/health. Probes em `/actuator/health/liveness` e `/actuator/health/readiness`.
+Health check: http://localhost:8083/actuator/health, sem token. Probes em `/actuator/health/liveness` e `/actuator/health/readiness`.
 
 ## Endpoint
 
 | Método | Rota | Descrição | Sucesso |
 |---|---|---|---|
-| `GET` | `/notifications?accountNumber=10001` | Notificações de uma conta, paginadas | `200` |
+| `GET` | `/notifications` | Notificações do usuário do token, de todas as contas, paginadas | `200` |
+| `GET` | `/notifications?accountNumber=10001` | Notificações do usuário do token sobre uma conta | `200` |
 
-- **Conta:** 5 dígitos, como nos outros serviços. Fora disso, `400`.
+- **De quem:** sempre do usuário do token (o `sub`). Cada notificação tem um dono, e a consulta filtra por ele.
+- **Conta:** opcional. Sem ela, vêm as notificações de todas as contas do usuário. Com ela, precisa ter 5 dígitos; fora disso, `400`. O parâmetro é opcional só porque a consulta sempre filtra pelo dono: antes, um pedido sem conta devolveria as notificações de todo mundo.
 - **Paginação:** `page` e `size`, no mesmo formato do account. Sem parâmetros, vale a primeira página com 20 itens, a mais recente primeiro. Um `size` acima de 100 é reduzido para 100.
-- **Ordem:** por padrão `createdAt` decrescente, que é a ordem do índice `(account_number, created_at DESC)`. O cliente pode pedir outra com `?sort=`, como no account.
-- **Conta sem notificações** (ou que não existe): página vazia, e não `404`. O notification não conhece as contas, só as notificações que gerou.
+- **Ordem:** por padrão `createdAt` decrescente, que é a ordem do índice `(owner_id, account_number, created_at DESC)`. O cliente pode pedir outra com `?sort=`, como no account.
+- **Conta sem notificações, que não existe ou de outra pessoa:** página vazia, e não `404`. É o "como se não existisse" na versão de lista: quem consulta a conta de outra pessoa não descobre nada.
+
+Com o `$TOKEN` da Ana ([como pegar](../README.md#como-rodar)):
 
 ```bash
-curl "http://localhost:8083/notifications?accountNumber=10001"
+curl -H "Authorization: Bearer $TOKEN" "http://localhost:8083/notifications?accountNumber=10001"
 ```
 
 ```json
@@ -118,17 +126,21 @@ matilha.transfer.events (Kafka)                     group-id: matilha-notificati
 
 **Regras de notificação**
 
-| Evento | Notificações |
-|---|---|
-| `TransferCompleted` | `TRANSFER_SENT` para a conta de origem e `TRANSFER_RECEIVED` para a de destino |
-| `TransferFailed` | `TRANSFER_FAILED` para a conta de origem, com o `failureCode` |
+| Evento | Notificações | Dono de cada uma |
+|---|---|---|
+| `TransferCompleted` | `TRANSFER_SENT` na conta de origem e `TRANSFER_RECEIVED` na de destino | `requestedBy` e `targetOwnerId` do evento |
+| `TransferFailed` | `TRANSFER_FAILED` na conta de origem, com o `failureCode` | `requestedBy` do evento |
+
+O dono vem do evento, e não de uma consulta ao account a cada requisição: isso criaria uma dependência síncrona, que os eventos existem para evitar. A falha vai para **quem pediu**, e não para o dono da conta de origem: se a Ana tentou transferir da conta do Bruno, a notificação é dela, e o Bruno não fica sabendo da tentativa.
+
+Uma notificação pode ficar **sem dono**: um evento publicado antes desses campos existirem, ou um crédito numa conta sem dono. Ela é gravada, como registro de que o evento aconteceu, mas ninguém a vê. Recusar o evento por isso o mandaria para a DLT por um motivo que não é erro de ninguém.
 
 O valor aparece em reais, no formato brasileiro: o `amount` `"1234567.89"` do evento vira `R$ 1.234.567,89` na mensagem. A formatação usa `DecimalFormat` com os símbolos de `pt-BR`, e não `NumberFormat.getCurrencyInstance`, que poria um espaço não separável (U+00A0) depois do "R$": na tela fica igual, mas quebra comparações de texto e buscas no log.
 
 **Contrato do evento**
 
 - O `TransferEventMessageDto` é uma cópia própria do evento do transfer. A classe do transfer não é importada (ADR-0009).
-- Campos desconhecidos são ignorados, então o transfer pode acrescentar campos sem quebrar o consumidor.
+- Campos desconhecidos são ignorados, então o transfer pode acrescentar campos sem quebrar o consumidor. Foi assim que o `requestedBy` e o `targetOwnerId` entraram: o transfer passou a publicá-los primeiro, o notification antigo continuou funcionando, e só depois o notification passou a lê-los. O evento continuou na versão 1. No sentido contrário, um evento antigo, sem esses campos, chega com os dois `null` e é aceito.
 - Um `eventVersion` maior que o suportado (1) vai para a DLT: é uma estrutura que este consumidor não sabe ler.
 - O `failureCode` chega como texto e é convertido por `FailureCode.fromCode()`. Um código desconhecido, ou ausente, vira `REJECTED_BY_ACCOUNT`, a mesma regra do transfer com os códigos do account (ADR-0007). O cliente é avisado da falha mesmo que o transfer crie um código novo.
 
@@ -162,7 +174,8 @@ Todas as respostas de erro seguem o formato Problem Details, como nos outros ser
 
 | Status | Quando |
 |---|---|
-| `400` | `accountNumber` ausente ou sem 5 dígitos |
+| `400` | `accountNumber` sem 5 dígitos |
+| `401` | Sem token ou com token inválido, com `code: UNAUTHENTICATED`. Vem antes da validação: sem token, um `accountNumber` inválido também dá `401` |
 | `500` | Erro inesperado (o detalhe vai só para o log) |
 
 ## Banco de dados
@@ -171,7 +184,7 @@ As migrações Flyway ficam em `src/main/resources/db/migration`, e o Hibernate 
 
 | Tabela | Conteúdo |
 |---|---|
-| `notifications` | Evento e transferência de origem, conta, tipo, mensagem, código da falha e data. Índice por `(account_number, created_at DESC)` para a consulta. |
+| `notifications` | Evento e transferência de origem, conta, dono (`owner_id`), tipo, mensagem, código da falha e data. Índice por `(owner_id, account_number, created_at DESC)`, na ordem da consulta. |
 | `processed_events` | Os `eventId` já tratados, com a data. É a garantia de idempotência. |
 
 As constraints espelham as regras: tipo válido, código de falha válido e código presente só em `TRANSFER_FAILED`.
@@ -185,12 +198,12 @@ cd matilha-notification
 
 O Docker precisa estar rodando, porque os testes de integração sobem um PostgreSQL e um Kafka reais com Testcontainers, nas mesmas versões do compose (`postgres:17` e `apache/kafka:4.3.1`). Os containers ficam no `TestcontainersConfiguration`, importado com `@Import` e reaproveitado entre as classes de teste. O account e o transfer seguem o mesmo padrão, só com o PostgreSQL.
 
-- **Montagem das notificações** (`NotificationFactoryTest`): completed gera 2, failed gera 1 com o código, código desconhecido vira o genérico, versão e tipo não suportados são recusados, o valor sai como `R$ 1.234.567,89` (com espaço comum) e um `amount` vazio ou que não é número é recusado
+- **Montagem das notificações** (`NotificationFactoryTest`): completed gera 2, failed gera 1 com o código, código desconhecido vira o genérico, versão e tipo não suportados são recusados, o valor sai como `R$ 1.234.567,89` (com espaço comum) e um `amount` vazio ou que não é número é recusado. Cada notificação recebe o dono certo, a falha vai para quem pediu, e um evento sem os campos de dono é aceito
 - **Entidades**: as regras do construtor da `Notification`, a conversão do `FailureCode` e a chave primária de `processed_events` contra o PostgreSQL (o segundo `save` com o mesmo id precisa falhar)
-- **Consumidor** (`TransferEventListenerTest`, Kafka real): completed, failed, código desconhecido, campos desconhecidos e o mesmo evento enviado duas vezes. Para provar que a cópia repetida já foi consumida sem usar `sleep`, o teste envia um evento "marcador" com a mesma chave logo depois: quando o marcador aparece, a cópia já passou.
+- **Consumidor** (`TransferEventListenerTest`, Kafka real): completed, failed, código desconhecido, campos desconhecidos, o dono de cada notificação, um evento sem os campos de dono e o mesmo evento enviado duas vezes. Para provar que a cópia repetida já foi consumida sem usar `sleep`, o teste envia um evento "marcador" com a mesma chave logo depois: quando o marcador aparece, a cópia já passou.
 - **DLT** (`TransferEventDeadLetterTest`, Kafka real): JSON inválido, versão nova, tipo desconhecido, conta vazia e valor inválido chegam à DLT, na mesma partição e com os cabeçalhos do erro. Uma mensagem envenenada não trava as seguintes.
-- **Consulta** (`NotificationQueryTest`, PostgreSQL real): filtro por conta, ordem, paginação e mapeamento
-- **Controller** (`NotificationControllerTest`, MockMvc): página, ordem padrão e limite de 100 do `PageableConfig`, `400` sem `accountNumber` ou com conta inválida e `500` sem vazar detalhes
+- **Consulta** (`NotificationQueryTest`, PostgreSQL real): filtro por dono e por conta, todas as contas do usuário sem o `accountNumber`, a conta de outra pessoa como página vazia, notificações sem dono invisíveis, ordem, paginação e mapeamento
+- **Controller** (`NotificationControllerTest`, MockMvc com o `SecurityConfig` de verdade): página, ordem padrão e limite de 100 do `PageableConfig`, o `sub` do token chegando ao service, a consulta sem `accountNumber`, `400` com conta inválida, `401` sem token e `500` sem vazar detalhes
 
 O consumidor é esperado com o Awaitility, nunca com `Thread.sleep`.
 
@@ -209,7 +222,7 @@ O workflow [notification-ci.yml](../.github/workflows/notification-ci.yml) roda 
 matilha-notification/
 ├── src/main/java/com/matilha/notification/
 │   ├── component/     # TransferEventListener (consumidor do Kafka)
-│   ├── config/        # Kafka (DLT e error handler), OpenAPI e paginação
+│   ├── config/        # Kafka (DLT e error handler), OpenAPI, paginação, SecurityConfig e o handler de 401/403
 │   ├── controller/    # GET /notifications
 │   ├── dto/           # Cópia do evento do transfer e resposta da API
 │   ├── entity/        # Notification, ProcessedEvent, NotificationType e FailureCode
@@ -224,9 +237,10 @@ matilha-notification/
 
 ## Próximos passos
 
-Fora do escopo desta fase, de propósito:
+Fora do escopo, de propósito:
 
 - E-mail, SMS ou push de verdade, templates de mensagem e preferências do usuário
+- Autenticação no Kafka (SASL/SCRAM com ACLs): hoje, quem alcança o broker pode publicar no tópico. Faz parte da segurança entre serviços, junto com o `/internal/**` do account
 - `@RetryableTopic` (tópicos de retry com atraso, que não travam a partição)
 - Schema Registry com Avro, para validar o contrato na publicação
 - Uma ferramenta para reprocessar a DLT

@@ -1,6 +1,6 @@
 # matilha-transfer
 
-Serviço dono dos pedidos de transferência. Recebe o pedido do cliente, registra, pede para o [matilha-account](../matilha-account/) mover o dinheiro e guarda o resultado. Ele nunca altera saldos: quem faz isso é o account.
+Serviço dono dos pedidos de transferência. Recebe o pedido do cliente, registra quem pediu, pede para o [matilha-account](../matilha-account/) mover o dinheiro e guarda o resultado. Ele nunca altera saldos: quem faz isso é o account.
 
 Faz parte do [Matilha](../README.md).
 
@@ -49,6 +49,10 @@ A 8082 serve para depuração e para o Swagger. A entrada oficial da API é o [m
 | `ACCOUNT_SERVICE_URL` | `http://localhost:8081` | Endereço do account. No Docker, o `compose.yaml` aponta para `http://account:8081`. |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Endereço do Kafka. No Docker, o `compose.yaml` aponta para `kafka:29092`, o listener interno do broker. |
 | `TRANSFER_DB_POOL_SIZE` | `10` | Tamanho do pool de conexões |
+| `KEYCLOAK_JWK_SET_URI` | `http://localhost:8180/realms/matilha/protocol/openid-connect/certs` | De onde vêm as chaves públicas do Keycloak. No Docker, `http://keycloak:8080/...` |
+| `KEYCLOAK_ISSUER_URI` | `http://localhost:8180/realms/matilha` | O `iss` que o token precisa trazer. É o mesmo no Docker |
+
+Os endpoints exigem um token do [Keycloak](../keycloak/), mesmo chamados direto na 8082. No modo 2b, suba o Keycloak também (`docker compose up -d keycloak`, na raiz).
 
 ## Perfis
 
@@ -61,14 +65,23 @@ Com o perfil `dev` ativo:
 - Swagger UI: http://localhost:8082/swagger-ui.html
 - OpenAPI (JSON): http://localhost:8082/v3/api-docs
 
-Health check: http://localhost:8082/actuator/health.
+Health check: http://localhost:8082/actuator/health, sem token.
+
+## Segurança
+
+O transfer valida o token sozinho, como o gateway e o account. Ele não tem regra de papel: qualquer usuário autenticado pode pedir transferências. As regras são de dono:
+
+- **Quem pediu é o `sub` do token**, gravado na transferência em `owner_id`. Ele nunca vem do corpo.
+- **A conta de origem precisa ser de quem pediu.** Quem confere é o account, o dono dos dados das contas: o transfer repassa o `ownerId` no `/internal/transfers`. A transferência a partir da conta de outra pessoa termina `FAILED` com `ACCOUNT_NOT_FOUND`, como se a conta não existisse.
+- **O `GET /transfers/{id}` só encontra as transferências de quem pergunta.** A de outra pessoa dá `404`, igual a uma inexistente.
+- **A `Idempotency-Key` também é conferida contra o dono.** A chave é única na tabela inteira, e não por usuário. Uma chave de outra pessoa, mesmo com os mesmos dados, é tratada como "chave já usada com outros dados" (`422`): sem isso, o reenvio devolveria a transferência de outra pessoa.
 
 ## Endpoints
 
 | Método | Rota | Descrição | Sucesso |
 |---|---|---|---|
-| `POST` | `/transfers` | Pede uma transferência (exige o header `Idempotency-Key`) | `201`, `202` ou `422` |
-| `GET` | `/transfers/{id}` | Consulta uma transferência | `200` |
+| `POST` | `/transfers` | Pede uma transferência (exige o token e o header `Idempotency-Key`) | `201`, `202` ou `422` |
+| `GET` | `/transfers/{id}` | Consulta uma transferência de quem pergunta | `200` |
 
 O status HTTP do `POST` depende do resultado:
 
@@ -99,15 +112,18 @@ O `code` é o contrato. O `detail` repete o texto do account e serve só para ge
 | `code` | Quando |
 |---|---|
 | `INSUFFICIENT_BALANCE` | A conta de origem não tem saldo |
-| `ACCOUNT_NOT_FOUND` | Uma das contas não existe |
+| `ACCOUNT_NOT_FOUND` | Uma das contas não existe, ou a conta de origem é de outra pessoa |
 | `ACCOUNT_INACTIVE` | Uma das contas está bloqueada ou encerrada |
 | `REJECTED_BY_ACCOUNT` | O account recusou por outro motivo, ou mandou um código que o transfer não conhece |
 | `INVALID_REQUEST` | O account disse que o pedido do transfer era inválido. É bug do transfer e fica no log de erro. |
 
 ### Exemplo
 
+Com o `$TOKEN` da Ana ([como pegar](../README.md#como-rodar)):
+
 ```bash
 curl -i -X POST http://localhost:8082/transfers \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: 3f1c2a9e-7b4d-4c1a-9e2f-5a6b7c8d9e01" \
   -d '{
@@ -140,12 +156,12 @@ Location: /transfers/8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d
 ```
 POST /transfers
   │
-  ├─ Idempotency-Key já existe? ──sim──▶ mesmos dados: devolve a transferência existente
-  │                                      dados diferentes: 422
+  ├─ Idempotency-Key já existe? ──sim──▶ mesmo dono e mesmos dados: devolve a transferência existente
+  │                                      outro dono ou dados diferentes: 422
   │
-  ├─ grava PENDING                        (transação 1)
-  ├─ chama POST /internal/transfers do account   (fora de transação)
-  └─ grava COMPLETED / FAILED / mantém PENDING   (transação 2)
+  ├─ grava PENDING, com o owner_id do token       (transação 1)
+  ├─ chama POST /internal/transfers do account    (fora de transação, com o ownerId)
+  └─ grava COMPLETED / FAILED / mantém PENDING    (transação 2)
 ```
 
 **Idempotência**
@@ -158,7 +174,7 @@ POST /transfers
 
 **Comunicação com o account**
 
-O `id` da transferência vai como `transferId` para o account, que também é idempotente. Por isso um reenvio nunca move o dinheiro duas vezes.
+O `id` da transferência vai como `transferId` para o account, que também é idempotente. Por isso um reenvio nunca move o dinheiro duas vezes. Junto vai o `ownerId`, quem pediu, que o account usa para conferir o dono da conta de origem. Na resposta, o account devolve o `targetOwnerId`, o dono da conta de destino, que o transfer grava e põe no evento.
 
 | Resposta do account | Resultado |
 |---|---|
@@ -182,6 +198,8 @@ A chamada ao account acontece fora de transação, para não prender uma conexã
 
 Uma transferência fica `PENDING` quando o account não respondeu, ou quando ele moveu o dinheiro e a gravação do resultado falhou. O `TransferReconciler` resolve os dois casos: a cada minuto, ele pega as `PENDING` com mais de 30 segundos e reenvia ao account com o mesmo `transferId`. Como o account é idempotente, ele responde com o resultado original ou processa agora.
 
+- **Sem token:** o reconciliador é um processo agendado, sem usuário logado, e o token de quem pediu provavelmente já venceu. Ele manda o `ownerId` gravado na transferência. É por isso que o dono é gravado, e não só repassado: sem ele, uma `PENDING` nunca poderia ser completada. O `owner_id` não muda (`updatable = false`), e o dono de uma conta também não, então o reenvio leva a mesma informação do pedido original.
+
 - **Várias réplicas:** a busca usa `SELECT ... FOR UPDATE SKIP LOCKED` numa transação curta, que grava uma reserva em `claimed_until` (5 minutos). Cada pendente é pega por uma réplica só. Se a réplica cair no meio, a reserva expira e outra assume.
 - **Lotes de 20:** uma transferência com problema é registrada no log e não impede as outras do lote.
 - **`@Version`:** se o reconciliador e uma requisição terminarem a mesma transferência, só um grava o resultado.
@@ -196,6 +214,15 @@ Uma transferência fica `PENDING` quando o account não respondeu, ou quando ele
 **Eventos (transactional outbox)**
 
 Quando uma transferência termina, o transfer publica `TransferCompleted` ou `TransferFailed` no tópico `matilha.transfer.events` do Kafka, com a conta de origem como chave. O evento leva contas, valor e o `failureCode`, mas não o `failureReason`: nenhum consumidor deve depender de um texto.
+
+O evento também leva dois ids do Keycloak, para o notification avisar a pessoa certa:
+
+| Campo | Quem é | No `TransferFailed` |
+|---|---|---|
+| `requestedBy` | quem pediu a transferência (o `owner_id`) | preenchido |
+| `targetOwnerId` | o dono da conta de destino, devolvido pelo account | `null`: o account recusou e não respondeu com o dono |
+
+O campo é `requestedBy`, e não "dono da conta de origem", de propósito. Se a Ana tenta transferir da conta do Bruno, o `TransferFailed` tem a conta do Bruno como origem, e quem precisa saber da falha é a Ana. O Bruno não fica sabendo da tentativa. Os dois campos são acréscimos opcionais, então o evento continua na versão 1: um consumidor antigo os ignora (ADR-0011).
 
 ```
 TransferFinisher.complete() / fail()      uma transação só
@@ -224,12 +251,13 @@ OutboxPublisher (a cada 1s)
 
 ## Erros
 
-Todas as respostas de erro seguem o formato Problem Details, como no account, inclusive a transferência recusada. Só a transferência recusada traz `code`.
+Todas as respostas de erro seguem o formato Problem Details, como no account, inclusive a transferência recusada. Só a transferência recusada e o `401` trazem `code`.
 
 | Status | Quando |
 |---|---|
 | `400` | Corpo inválido (campos em `errors`), header `Idempotency-Key` ausente ou que não é UUID, id que não é UUID |
-| `404` | Transferência não encontrada |
+| `401` | Sem token ou com token inválido, com `code: UNAUTHENTICATED` |
+| `404` | Transferência não encontrada, ou de outra pessoa |
 | `409` | Violação de integridade inesperada |
 | `422` | Transferência recusada pelo account, contas iguais ou chave reusada com dados diferentes |
 | `500` | Erro inesperado (o detalhe vai só para o log) |
@@ -240,7 +268,7 @@ As migrações Flyway ficam em `src/main/resources/db/migration`, e o Hibernate 
 
 | Tabela | Conteúdo |
 |---|---|
-| `transfers` | Contas, valor, status, código e motivo da falha, `idempotency_key` (única), `claimed_until` (reserva do reconciliador) e `version` (lock otimista) |
+| `transfers` | Quem pediu (`owner_id`), contas, valor, status, dono da conta de destino (`target_owner_id`), código e motivo da falha, `idempotency_key` (única), `claimed_until` (reserva do reconciliador) e `version` (lock otimista) |
 | `outbox_events` | Eventos a publicar no Kafka: tipo, chave, payload em JSONB, `published_at`, `claimed_until` (reserva do publicador), tentativas e último erro. Um evento por tipo para cada transferência. |
 
 O banco também garante as regras com constraints: status válido, valor positivo, contas diferentes, código de falha válido e código presente só nas `FAILED`. Índices parciais sobre as `PENDING` e sobre os eventos não publicados deixam as buscas rápidas mesmo com as tabelas grandes.
@@ -262,12 +290,12 @@ O Docker precisa estar rodando, porque os testes que sobem a aplicação usam um
 - **Reserva do outbox** (`OutboxServiceTest`, contra o PostgreSQL): a busca com `SKIP LOCKED`, a reserva com prazo, a marcação de publicado e o registro de falhas
 - **Publicador** (`OutboxPublisherTest`, com o Kafka simulado): marca como publicado só depois da confirmação, registra a falha e o tempo esgotado, e para o lote na primeira falha
 - **AccountClient**: as respostas do account contra um servidor HTTP de verdade, incluindo conexão recusada e timeout. O teste de timeout leva uns 5 segundos.
-- **Service**: sucesso, recusa, indisponibilidade, reenvio e corrida pela mesma chave (com Mockito)
-- **Controller**: status HTTP de cada resultado, header de idempotência, validação e erros (com MockMvc)
+- **Service**: sucesso, recusa, indisponibilidade, reenvio e corrida pela mesma chave (com Mockito). Também o dono: ele vai para a transferência e para o account, a chave de outra pessoa não devolve a transferência dela, a transferência de outra pessoa dá `404`, e o reprocessamento sem token manda o dono gravado
+- **Controller**: status HTTP de cada resultado, header de idempotência, validação e erros (com MockMvc e o `SecurityConfig` de verdade). O service recebe o `sub` do token, sem token dá `401`, e um `POST` sem token dá `401` e não `403`
 
 ### Postman
 
-A collection [postman/matilha.postman_collection.json](../postman/matilha.postman_collection.json) testa o fluxo inteiro pelo gateway, com o sistema rodando no perfil `dev`. Ela inclui depósito, sucesso, idempotência (conferindo que o saldo muda uma vez só), recusas, consulta, validação e notificações. Rode as pastas 0 a 6 pelo Collection Runner. A pasta 7 é manual: você para o account, cria uma transferência (`202 PENDING`), sobe o account de novo e confere que o reconciliador a marcou `COMPLETED`.
+A collection [postman/matilha.postman_collection.json](../postman/matilha.postman_collection.json) testa o fluxo inteiro pelo gateway, com o sistema rodando no perfil `dev`. Ela pega os tokens da Ana e do Bruno no Keycloak sozinha, e inclui depósito, sucesso, idempotência (conferindo que o saldo muda uma vez só), recusas, a Ana tentando transferir da conta do Bruno, consulta, validação e notificações. Rode as pastas 0 a 6 pelo Collection Runner. A pasta 7 é manual: você para o account, cria uma transferência (`202 PENDING`), sobe o account de novo e confere que o reconciliador a marcou `COMPLETED`.
 
 Para rodar o serviço na IDE sem o banco do compose, use o `main` de `TestTransferApplication` (em `src/test`). Ele sobe a aplicação com o mesmo PostgreSQL dos testes. O account e o Kafka continuam vindo de fora (`docker compose up -d account kafka` na raiz). Sem o account, as transferências ficam `PENDING`. Sem o Kafka, os eventos esperam no outbox.
 
@@ -285,7 +313,7 @@ matilha-transfer/
 ├── src/main/java/com/matilha/transfer/
 │   ├── client/        # AccountClient (chamadas ao matilha-account)
 │   ├── component/     # TransferReconciler e OutboxPublisher (tarefas agendadas)
-│   ├── config/        # OpenAPI, agendamento e tópico do Kafka
+│   ├── config/        # OpenAPI, agendamento, tópico do Kafka, SecurityConfig e o handler de 401/403
 │   ├── controller/    # Endpoints de transferência
 │   ├── dto/           # Records de request/response (próprios e do account) e eventos
 │   ├── entity/        # Transfer, TransferStatus e OutboxEvent
