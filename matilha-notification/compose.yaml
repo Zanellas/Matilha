@@ -29,6 +29,7 @@ services:
       NOTIFICATION_DB_USERNAME: ${NOTIFICATION_DB_USERNAME:?defina NOTIFICATION_DB_USERNAME no .env}
       NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?defina NOTIFICATION_DB_PASSWORD no .env}
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/matilha/protocol/openid-connect/certs
     depends_on:
       notification-db:
         condition: service_healthy
