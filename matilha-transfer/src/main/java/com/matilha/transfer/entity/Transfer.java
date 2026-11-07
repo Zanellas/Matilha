@@ -74,10 +74,14 @@ public class Transfer {
     private Instant claimedUntil;
 
     @Column
+    private String targetOwnerId;
+
+    @Column
     @Version
     private Long version;
 
-    public Transfer(String ownerId, UUID idempotencyKey, String sourceAccountNumber, String targetAccountNumber, BigDecimal amount) {
+    public Transfer(String ownerId, UUID idempotencyKey, String sourceAccountNumber, String targetAccountNumber,
+            BigDecimal amount) {
         this.ownerId = requireNotBlank(ownerId, "ownerId");
         if (idempotencyKey == null) {
             throw new BusinessException("idempotencyKey must not be null");
@@ -93,8 +97,9 @@ public class Transfer {
         this.status = TransferStatus.PENDING;
     }
 
-    public void complete() {
+    public void complete(String targetOwnerId) {
         requirePending();
+        this.targetOwnerId = targetOwnerId;
         this.status = TransferStatus.COMPLETED;
     }
 

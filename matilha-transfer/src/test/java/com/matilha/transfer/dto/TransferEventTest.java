@@ -24,17 +24,19 @@ class TransferEventTest {
     private static final UUID TRANSFER_ID = UUID.fromString("8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d");
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
+    private static final String ANA = "00000000-0000-0000-0003-000000000001";
+    private static final String BRUNO = "00000000-0000-0000-0003-000000000002";
 
-    /** Simula uma transferência já salva, com o id que o Hibernate gera. */
+    /** Simula uma transferência já salva, pedida pela Ana, com o id que o Hibernate gera. */
     private static Transfer savedTransfer(String amount) {
-        Transfer transfer = new Transfer("00000000-0000-0000-0003-000000000001", KEY, SOURCE, TARGET, new BigDecimal(amount));
+        Transfer transfer = new Transfer(ANA, KEY, SOURCE, TARGET, new BigDecimal(amount));
         ReflectionTestUtils.setField(transfer, "id", TRANSFER_ID);
         return transfer;
     }
 
     private static Transfer completed(String amount) {
         Transfer transfer = savedTransfer(amount);
-        transfer.complete();
+        transfer.complete(BRUNO);
         return transfer;
     }
 
@@ -52,6 +54,29 @@ class TransferEventTest {
             assertThat(event.targetAccountNumber()).isEqualTo(TARGET);
             assertThat(event.amount()).isEqualTo("250.50");
             assertThat(event.failureCode()).isNull();
+        }
+
+        /** Quem pediu recebe o TRANSFER_SENT; o dono do destino recebe o TRANSFER_RECEIVED. */
+        @Test
+        void shouldCarryWhoRequestedAndTheTargetOwner() {
+            TransferEvent event = TransferEvent.from(completed("250.50"));
+
+            assertThat(event.requestedBy()).isEqualTo(ANA);
+            assertThat(event.targetOwnerId()).isEqualTo(BRUNO);
+        }
+
+        /**
+         * Campos novos e opcionais não mudam a versão: um consumidor da versão 1 que não os conhece
+         * continua entendendo o evento (ADR-0011).
+         */
+        @Test
+        void shouldKeepVersionOneAfterAddingTheOwners() {
+            String json = JsonMapper.builder().build().writeValueAsString(TransferEvent.from(completed("250.50")));
+
+            assertThat(json)
+                    .contains("\"eventVersion\":1")
+                    .contains("\"requestedBy\":\"" + ANA + "\"")
+                    .contains("\"targetOwnerId\":\"" + BRUNO + "\"");
         }
 
         @Test
@@ -74,6 +99,21 @@ class TransferEventTest {
             assertThat(event.eventType()).isEqualTo(TransferEvent.FAILED);
             assertThat(event.failureCode()).isEqualTo(FailureCode.INSUFFICIENT_BALANCE);
             assertThat(event.transferId()).isEqualTo(TRANSFER_ID);
+        }
+
+        /**
+         * Na falha, quem é avisado é quem pediu, e não o dono da conta de origem: se a Ana tentou transferir
+         * da conta do Bruno, o Bruno não fica sabendo. O account não respondeu, então não há dono do destino.
+         */
+        @Test
+        void shouldCarryWhoRequestedAndNoTargetOwner() {
+            Transfer transfer = savedTransfer("250.50");
+            transfer.fail(FailureCode.ACCOUNT_NOT_FOUND, "Account 10001 not found");
+
+            TransferEvent event = TransferEvent.from(transfer);
+
+            assertThat(event.requestedBy()).isEqualTo(ANA);
+            assertThat(event.targetOwnerId()).isNull();
         }
 
         /**

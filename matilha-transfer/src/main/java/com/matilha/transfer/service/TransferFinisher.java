@@ -22,8 +22,8 @@ public class TransferFinisher {
     private final JsonMapper jsonMapper;
 
     @Transactional
-    public Transfer complete(Transfer transfer) {
-        transfer.complete();
+    public Transfer complete(Transfer transfer, String targetOwnerId) {
+        transfer.complete(targetOwnerId);
         return saveWithEvent(transfer);
     }
 

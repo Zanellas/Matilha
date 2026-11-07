@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.matilha.transfer.client.AccountClient;
 import com.matilha.transfer.dto.AccountTransferRequestDto;
+import com.matilha.transfer.dto.AccountTransferResponseDto;
 import com.matilha.transfer.dto.CreateTransferRequestDto;
 import com.matilha.transfer.dto.TransferResponseDto;
 import com.matilha.transfer.entity.Transfer;
@@ -73,8 +74,9 @@ public class TransferService {
                 transfer.getTargetAccountNumber(),
                 transfer.getAmount());
 
+        AccountTransferResponseDto accountResponse;
         try {
-            accountClient.transfer(accountRequest);
+            accountResponse = accountClient.transfer(accountRequest);
         } catch (AccountTransferRejectedException ex) {
             return transferFinisher.fail(transfer, ex.getCode(), ex.getMessage());
         } catch (AccountUnavailableException ex) {
@@ -82,7 +84,7 @@ public class TransferService {
             return transfer;
         }
 
-        return transferFinisher.complete(transfer);
+        return transferFinisher.complete(transfer, accountResponse.targetOwnerId());
     }
 
     @Transactional

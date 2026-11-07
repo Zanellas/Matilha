@@ -19,6 +19,7 @@ import com.matilha.transfer.exception.BusinessException;
 class TransferTest {
 
     private static final String OWNER = "00000000-0000-0000-0003-000000000001";
+    private static final String TARGET_OWNER = "00000000-0000-0000-0003-000000000002";
     private static final UUID KEY = UUID.fromString("3f1c2a9e-7b4d-4c1a-9e2f-5a6b7c8d9e01");
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
@@ -197,7 +198,7 @@ class TransferTest {
 
         @Test
         void shouldRejectClaimingCompletedTransfer() {
-            transfer.complete();
+            transfer.complete(TARGET_OWNER);
 
             assertThatThrownBy(() -> transfer.claimUntil(Instant.now()))
                     .isInstanceOf(BusinessException.class)
@@ -219,18 +220,28 @@ class TransferTest {
 
         @Test
         void shouldCompletePendingTransfer() {
-            transfer.complete();
+            transfer.complete(TARGET_OWNER);
 
             assertThat(transfer.getStatus()).isEqualTo(TransferStatus.COMPLETED);
+            assertThat(transfer.getTargetOwnerId()).isEqualTo(TARGET_OWNER);
             assertThat(transfer.getFailureReason()).isNull();
             assertThat(transfer.getFailureCode()).isNull();
         }
 
+        /** Conta de destino sem dono (criada antes da Fase 4): a transferência conclui do mesmo jeito. */
+        @Test
+        void shouldCompleteWhenTargetHasNoOwner() {
+            transfer.complete(null);
+
+            assertThat(transfer.getStatus()).isEqualTo(TransferStatus.COMPLETED);
+            assertThat(transfer.getTargetOwnerId()).isNull();
+        }
+
         @Test
         void shouldRejectCompletingCompletedTransfer() {
-            transfer.complete();
+            transfer.complete(TARGET_OWNER);
 
-            assertThatThrownBy(transfer::complete)
+            assertThatThrownBy(() -> transfer.complete(TARGET_OWNER))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Only pending transfers can be finished");
             assertThat(transfer.getStatus()).isEqualTo(TransferStatus.COMPLETED);
@@ -240,7 +251,7 @@ class TransferTest {
         void shouldRejectCompletingFailedTransfer() {
             transfer.fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance");
 
-            assertThatThrownBy(transfer::complete)
+            assertThatThrownBy(() -> transfer.complete(TARGET_OWNER))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("Only pending transfers can be finished");
             assertThat(transfer.getStatus()).isEqualTo(TransferStatus.FAILED);
@@ -283,7 +294,7 @@ class TransferTest {
 
         @Test
         void shouldRejectFailingCompletedTransfer() {
-            transfer.complete();
+            transfer.complete(TARGET_OWNER);
 
             assertThatThrownBy(() -> transfer.fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance"))
                     .isInstanceOf(BusinessException.class)

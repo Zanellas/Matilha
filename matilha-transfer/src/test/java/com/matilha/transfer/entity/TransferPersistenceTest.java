@@ -40,6 +40,7 @@ import com.matilha.transfer.service.TransferService;
 class TransferPersistenceTest {
 
     private static final String OWNER = "00000000-0000-0000-0003-000000000001";
+    private static final String TARGET_OWNER = "00000000-0000-0000-0003-000000000002";
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
 
@@ -113,10 +114,13 @@ class TransferPersistenceTest {
         void shouldPersistCompletedTransfer() {
             Transfer saved = transferRepository.save(newTransfer(UUID.randomUUID(), "10.00"));
 
-            transactionTemplate.executeWithoutResult(status -> reload(saved.getId()).complete());
+            transactionTemplate.executeWithoutResult(status -> reload(saved.getId()).complete(TARGET_OWNER));
 
             Transfer loaded = reload(saved.getId());
             assertThat(loaded.getStatus()).isEqualTo(TransferStatus.COMPLETED);
+            assertThat(loaded.getTargetOwnerId()).isEqualTo(TARGET_OWNER);
+            assertThat(jdbcTemplate.queryForObject("SELECT target_owner_id FROM transfers WHERE id = ?",
+                    String.class, saved.getId())).isEqualTo(TARGET_OWNER);
             assertThat(loaded.getUpdatedAt()).isAfterOrEqualTo(loaded.getCreatedAt());
             assertThat(loaded.getVersion()).isEqualTo(1L);
         }
@@ -273,7 +277,7 @@ class TransferPersistenceTest {
             UUID id = pendingCreated(Duration.ofMinutes(10));
             Transfer claimed = transferService.claimPending(cutoff, LEASE, 20).getFirst();
 
-            claimed.complete();
+            claimed.complete(TARGET_OWNER);
             transferRepository.save(claimed);
 
             assertThat(reload(id).getStatus()).isEqualTo(TransferStatus.COMPLETED);

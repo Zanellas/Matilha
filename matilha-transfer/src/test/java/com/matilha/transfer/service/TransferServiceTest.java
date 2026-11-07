@@ -33,6 +33,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.matilha.transfer.client.AccountClient;
 import com.matilha.transfer.dto.AccountTransferRequestDto;
+import com.matilha.transfer.dto.AccountTransferResponseDto;
 import com.matilha.transfer.dto.CreateTransferRequestDto;
 import com.matilha.transfer.dto.TransferResponseDto;
 import com.matilha.transfer.entity.FailureCode;
@@ -73,11 +74,17 @@ class TransferServiceTest {
 
     /** O finisher de verdade (testado no TransferFinisherTest) aplica o resultado e grava. Aqui só aplica. */
     private void finisherCompletes() {
-        when(transferFinisher.complete(any(Transfer.class))).thenAnswer(invocation -> {
+        when(transferFinisher.complete(any(Transfer.class), any())).thenAnswer(invocation -> {
             Transfer transfer = invocation.getArgument(0);
-            transfer.complete();
+            transfer.complete(invocation.getArgument(1));
             return transfer;
         });
+    }
+
+    /** O account aceita e devolve o dono da conta de destino, como o InternalTransferService de verdade. */
+    private void accountAccepts() {
+        when(accountClient.transfer(any())).thenReturn(new AccountTransferResponseDto(TRANSFER_ID, SOURCE,
+                new BigDecimal("1000.00"), TARGET, new BigDecimal("250.50"), new BigDecimal("250.50"), BRUNO));
     }
 
     private void finisherFails() {
@@ -110,7 +117,16 @@ class TransferServiceTest {
         @BeforeEach
         void setUp() {
             saveBehavesLikeDatabase();
+            accountAccepts();
             finisherCompletes();
+        }
+
+        /** O dono do destino só o account sabe: ele vem na resposta e vai para o finisher, que o grava e põe no evento. */
+        @Test
+        void shouldPassTheTargetOwnerFromAccountToTheFinisher() {
+            transferService.create(KEY, REQUEST, ANA);
+
+            verify(transferFinisher).complete(any(Transfer.class), eq(BRUNO));
         }
 
         @Test
@@ -132,7 +148,7 @@ class TransferServiceTest {
             InOrder order = inOrder(transferRepository, accountClient, transferFinisher);
             order.verify(transferRepository).save(any(Transfer.class));
             order.verify(accountClient).transfer(any(AccountTransferRequestDto.class));
-            order.verify(transferFinisher).complete(any(Transfer.class));
+            order.verify(transferFinisher).complete(any(Transfer.class), any());
             assertThat(savedStatuses).containsExactly(TransferStatus.PENDING);
             verify(transferFinisher, never()).fail(any(), any(), any());
         }
@@ -196,7 +212,7 @@ class TransferServiceTest {
 
             verify(transferFinisher).fail(any(Transfer.class), eq(FailureCode.INSUFFICIENT_BALANCE),
                     eq("Insufficient balance"));
-            verify(transferFinisher, never()).complete(any());
+            verify(transferFinisher, never()).complete(any(), any());
             assertThat(savedStatuses).containsExactly(TransferStatus.PENDING);
         }
     }
@@ -224,7 +240,7 @@ class TransferServiceTest {
         void shouldNeitherFinishNorSaveAgain() {
             transferService.create(KEY, REQUEST, ANA);
 
-            verify(transferFinisher, never()).complete(any());
+            verify(transferFinisher, never()).complete(any(), any());
             verify(transferFinisher, never()).fail(any(), any(), any());
             assertThat(savedStatuses).containsExactly(TransferStatus.PENDING);
         }
@@ -241,7 +257,7 @@ class TransferServiceTest {
             assertThatThrownBy(() -> transferService.create(KEY, REQUEST, ANA))
                     .isInstanceOf(IllegalStateException.class);
             assertThat(savedStatuses).containsExactly(TransferStatus.PENDING);
-            verify(transferFinisher, never()).complete(any());
+            verify(transferFinisher, never()).complete(any(), any());
             verify(transferFinisher, never()).fail(any(), any(), any());
         }
 
@@ -252,9 +268,10 @@ class TransferServiceTest {
         @Test
         void shouldNotTreatAnErrorWhileFinishingAsAnAccountRejection() {
             saveBehavesLikeDatabase();
+            accountAccepts();
             ObjectOptimisticLockingFailureException conflict =
                     new ObjectOptimisticLockingFailureException(Transfer.class, TRANSFER_ID);
-            when(transferFinisher.complete(any(Transfer.class))).thenThrow(conflict);
+            when(transferFinisher.complete(any(Transfer.class), any())).thenThrow(conflict);
 
             assertThatThrownBy(() -> transferService.create(KEY, REQUEST, ANA)).isSameAs(conflict);
             verify(transferFinisher, never()).fail(any(), any(), any());
@@ -268,7 +285,7 @@ class TransferServiceTest {
             Transfer transfer = new Transfer(ANA, KEY, SOURCE, TARGET, new BigDecimal("250.50"));
             ReflectionTestUtils.setField(transfer, "id", TRANSFER_ID);
             if (status == TransferStatus.COMPLETED) {
-                transfer.complete();
+                transfer.complete(BRUNO);
             } else if (status == TransferStatus.FAILED) {
                 transfer.fail(FailureCode.INSUFFICIENT_BALANCE, "Insufficient balance");
             }
@@ -446,6 +463,7 @@ class TransferServiceTest {
 
         @Test
         void shouldSendTheStoredOwnerWhenReprocessingWithoutToken() {
+            accountAccepts();
             finisherCompletes();
             Transfer pending = new Transfer(ANA, KEY, SOURCE, TARGET, new BigDecimal("250.50"));
             ReflectionTestUtils.setField(pending, "id", TRANSFER_ID);

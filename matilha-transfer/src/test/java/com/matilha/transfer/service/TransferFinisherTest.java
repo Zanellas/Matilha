@@ -33,6 +33,8 @@ class TransferFinisherTest {
 
     private static final String SOURCE = "10001";
     private static final String TARGET = "10002";
+    private static final String ANA = "00000000-0000-0000-0003-000000000001";
+    private static final String BRUNO = "00000000-0000-0000-0003-000000000002";
 
     @Autowired
     private TransferFinisher transferFinisher;
@@ -51,7 +53,7 @@ class TransferFinisherTest {
 
     /** Como no fluxo real: a PENDING já foi gravada numa transação anterior e chega aqui desanexada. */
     private Transfer savedPending() {
-        return transferRepository.save(new Transfer("00000000-0000-0000-0003-000000000001", UUID.randomUUID(), SOURCE, TARGET, new BigDecimal("250.50")));
+        return transferRepository.save(new Transfer(ANA, UUID.randomUUID(), SOURCE, TARGET, new BigDecimal("250.50")));
     }
 
     private TransferStatus statusInDatabase(UUID transferId) {
@@ -70,6 +72,8 @@ class TransferFinisherTest {
                        payload->>'transferId'    AS payload_transfer_id,
                        payload->>'amount'        AS payload_amount,
                        payload->>'failureCode'   AS payload_failure_code,
+                       payload->>'requestedBy'   AS payload_requested_by,
+                       payload->>'targetOwnerId' AS payload_target_owner_id,
                        payload::text             AS payload_text
                 FROM outbox_events
                 WHERE aggregate_id = ?
@@ -83,10 +87,11 @@ class TransferFinisherTest {
         void shouldSaveCompletedStatusAndEventTogether() {
             Transfer pending = savedPending();
 
-            Transfer completed = transferFinisher.complete(pending);
+            Transfer completed = transferFinisher.complete(pending, BRUNO);
 
             assertThat(completed.getStatus()).isEqualTo(TransferStatus.COMPLETED);
             assertThat(statusInDatabase(pending.getId())).isEqualTo(TransferStatus.COMPLETED);
+            assertThat(transferRepository.findById(pending.getId()).orElseThrow().getTargetOwnerId()).isEqualTo(BRUNO);
             assertThat(outboxCount()).isEqualTo(1);
 
             Map<String, Object> row = outboxRow(pending.getId());
@@ -98,6 +103,8 @@ class TransferFinisherTest {
             assertThat(row.get("payload_transfer_id")).isEqualTo(pending.getId().toString());
             assertThat(row.get("payload_amount")).isEqualTo("250.50");
             assertThat(row.get("payload_failure_code")).isNull();
+            assertThat(row.get("payload_requested_by")).isEqualTo(ANA);
+            assertThat(row.get("payload_target_owner_id")).isEqualTo(BRUNO);
         }
 
         /** O notification vai descartar duplicadas pelo eventId, então ele precisa ser o id da linha. */
@@ -105,7 +112,7 @@ class TransferFinisherTest {
         void shouldUseTheEventIdAsTheOutboxId() {
             Transfer pending = savedPending();
 
-            transferFinisher.complete(pending);
+            transferFinisher.complete(pending, BRUNO);
 
             Map<String, Object> row = outboxRow(pending.getId());
             assertThat(row.get("id").toString()).isEqualTo(row.get("payload_event_id"));
@@ -129,6 +136,8 @@ class TransferFinisherTest {
             Map<String, Object> row = outboxRow(pending.getId());
             assertThat(row.get("event_type")).isEqualTo("TransferFailed");
             assertThat(row.get("payload_failure_code")).isEqualTo("INSUFFICIENT_BALANCE");
+            assertThat(row.get("payload_requested_by")).isEqualTo(ANA);
+            assertThat(row.get("payload_target_owner_id")).isNull();
         }
 
         @Test
@@ -156,7 +165,7 @@ class TransferFinisherTest {
                     VALUES (?, ?, 'TransferCompleted', ?, CAST('{}' AS jsonb), now())
                     """, UUID.randomUUID(), pending.getId(), SOURCE);
 
-            assertThatThrownBy(() -> transferFinisher.complete(pending))
+            assertThatThrownBy(() -> transferFinisher.complete(pending, BRUNO))
                     .isInstanceOf(DataIntegrityViolationException.class);
 
             assertThat(statusInDatabase(pending.getId())).isEqualTo(TransferStatus.PENDING);
@@ -172,7 +181,7 @@ class TransferFinisherTest {
             Transfer requestCopy = savedPending();
             Transfer reconcilerCopy = transferRepository.findById(requestCopy.getId()).orElseThrow();
 
-            transferFinisher.complete(requestCopy);
+            transferFinisher.complete(requestCopy, BRUNO);
 
             assertThatThrownBy(() -> transferFinisher.fail(reconcilerCopy, FailureCode.INSUFFICIENT_BALANCE,
                     "Insufficient balance"))

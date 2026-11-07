@@ -49,7 +49,8 @@ class AccountClientTest {
               "sourceBalanceAfter": 1249.50,
               "targetAccountNumber": "10002",
               "targetBalanceAfter": 500.50,
-              "amount": 250.50
+              "amount": 250.50,
+              "targetOwnerId": "00000000-0000-0000-0003-000000000002"
             }
             """;
 
@@ -137,6 +138,7 @@ class AccountClientTest {
             assertThat(response.targetAccountNumber()).isEqualTo("10002");
             assertThat(response.targetBalanceAfter()).isEqualByComparingTo("500.50");
             assertThat(response.amount()).isEqualByComparingTo("250.50");
+            assertThat(response.targetOwnerId()).isEqualTo("00000000-0000-0000-0003-000000000002");
         }
 
         @Test

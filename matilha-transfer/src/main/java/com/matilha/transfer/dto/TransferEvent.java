@@ -15,7 +15,9 @@ public record TransferEvent(
         String sourceAccountNumber,
         String targetAccountNumber,
         String amount,
-        FailureCode failureCode) {
+        FailureCode failureCode,
+        String requestedBy,
+        String targetOwnerId) {
 
     public static final String COMPLETED = "TransferCompleted";
     public static final String FAILED = "TransferFailed";
@@ -31,7 +33,9 @@ public record TransferEvent(
                 transfer.getSourceAccountNumber(),
                 transfer.getTargetAccountNumber(),
                 transfer.getAmount().toPlainString(),
-                transfer.getFailureCode());
+                transfer.getFailureCode(),
+                transfer.getOwnerId(),
+                transfer.getTargetOwnerId());
     }
 
     private static String typeFor(Transfer transfer) {

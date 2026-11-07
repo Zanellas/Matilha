@@ -9,6 +9,7 @@ public record AccountTransferResponseDto(
         BigDecimal sourceBalanceAfter,
         String targetAccountNumber,
         BigDecimal targetBalanceAfter,
-        BigDecimal amount) {
+        BigDecimal amount,
+        String targetOwnerId) {
 
 }
