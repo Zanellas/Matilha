@@ -30,6 +30,7 @@ services:
       TRANSFER_DB_PASSWORD: ${TRANSFER_DB_PASSWORD:?defina TRANSFER_DB_PASSWORD no .env}
       ACCOUNT_SERVICE_URL: http://account:8081
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/matilha/protocol/openid-connect/certs
     depends_on:
       transfer-db:
         condition: service_healthy
