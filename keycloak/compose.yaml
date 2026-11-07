@@ -15,7 +15,13 @@ services:
     volumes:
       - ./realm-matilha.json:/opt/keycloak/data/import/realm-matilha.json:ro
     healthcheck:
-      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/localhost/9000 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "UP" <&3']
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          'exec 3<>/dev/tcp/localhost/9000 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "UP" <&3',
+        ]
       interval: 10s
       timeout: 5s
       retries: 15

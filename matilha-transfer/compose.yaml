@@ -36,6 +36,5 @@ services:
       kafka:
         condition: service_healthy
 
-
 volumes:
   transfer-db-data:

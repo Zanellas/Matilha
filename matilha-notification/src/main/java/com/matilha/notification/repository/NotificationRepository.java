@@ -9,6 +9,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import com.matilha.notification.entity.Notification;
 
 public interface NotificationRepository extends JpaRepository<Notification, UUID> {
-    
+
     Page<Notification> findByAccountNumber(String accountNumber, Pageable pageable);
 }

@@ -70,7 +70,6 @@ Passo "Aplicando os manifests"
 Executar kubectl apply -k (Join-Path $Raiz "k8s")
 Executar kubectl config set-context --current --namespace=matilha
 
-# Com a tag fixa :dev, o Deployment não muda quando a imagem muda. O restart faz os pods pegarem a imagem nova.
 if ($existia -and -not $SemBuild) {
     foreach ($servico in $Servicos) {
         Passo "Reiniciando o $servico com a imagem nova"

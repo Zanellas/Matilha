@@ -1,19 +1,4 @@
-﻿# Prova (ADR-0003): transferências simultâneas em sentidos opostos, com várias réplicas do account,
-# não causam deadlock nem criam ou somem com dinheiro.
-#
-# Uso, na raiz do repositório, com o cluster no ar:
-#   .\k8s\provas\2-transferencias-simultaneas.ps1
-#   .\k8s\provas\2-transferencias-simultaneas.ps1 -Quantidade 100
-#   .\k8s\provas\2-transferencias-simultaneas.ps1 -ContarPorPod
-#
-# -ContarPorPod liga o access log do Tomcat no account (por variável de ambiente, sem mudar código),
-# conta quantas chamadas cada réplica recebeu e desliga o access log no fim. Cada ligar e desligar
-# reinicia os pods do account, então essa opção leva cerca de 1 minuto a mais.
-#
-# Esperado: só COMPLETED, nenhum HTTP 500, a soma dos saldos igual antes e depois e,
-# com -ContarPorPod, as chamadas divididas entre os dois pods do account.
-
-param(
+﻿param(
     [int]$Quantidade = 40,
     [switch]$ContarPorPod
 )
@@ -44,7 +29,8 @@ $envio = {
     try {
         (Invoke-RestMethod -Method Post -Uri "$base/transfers" -ContentType "application/json" `
             -Headers @{ "Idempotency-Key" = [guid]::NewGuid().ToString() } -Body $body).status
-    } catch {
+    }
+    catch {
         if ($_.Exception.Response) { "HTTP " + [int]$_.Exception.Response.StatusCode } else { "sem resposta" }
     }
 }
@@ -73,9 +59,9 @@ if ($ContarPorPod) {
     Write-Host "`nChamadas ao /internal/transfers por pod do account:" -ForegroundColor Cyan
     # --tail=-1: com seletor (-l), o kubectl mostra só as últimas 10 linhas de cada pod por padrão.
     kubectl logs -l app=account --prefix --tail=-1 --since="$($desde)s" |
-        Select-String "POST /internal/transfers" |
-        ForEach-Object { ($_.Line -split "/")[1] } |
-        Group-Object | Format-Table Count, Name -AutoSize
+    Select-String "POST /internal/transfers" |
+    ForEach-Object { ($_.Line -split "/")[1] } |
+    Group-Object | Format-Table Count, Name -AutoSize
 
     Write-Host "Desligando o access log do account..." -ForegroundColor Cyan
     $remover = $AccessLog | ForEach-Object { "$_-" }

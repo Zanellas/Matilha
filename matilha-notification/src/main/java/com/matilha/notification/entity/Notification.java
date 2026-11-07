@@ -57,7 +57,8 @@ public class Notification {
     @CreationTimestamp
     private Instant createdAt;
 
-    public Notification(UUID eventId, UUID transferId, String accountNumber, NotificationType type, String message, FailureCode failureCode) {
+    public Notification(UUID eventId, UUID transferId, String accountNumber, NotificationType type, String message,
+            FailureCode failureCode) {
         if (eventId == null || transferId == null || type == null) {
             throw new BusinessException("eventId, transferId and type must not be null");
         }

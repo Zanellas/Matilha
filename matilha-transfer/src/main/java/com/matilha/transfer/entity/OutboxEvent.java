@@ -53,7 +53,7 @@ public class OutboxEvent implements Persistable<UUID> {
     @Column
     private Instant publishedAt;
 
-    @Column 
+    @Column
     private Instant claimedUntil;
 
     @Column(nullable = false)
