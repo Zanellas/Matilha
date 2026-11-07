@@ -24,7 +24,7 @@ public class NotificationController {
 
     @GetMapping
     public ResponseEntity<PagedModel<NotificationResponseDto>> findByAccount(
-            @RequestParam @Pattern(regexp = "\\d{5}") String accountNumber, Pageable pageable,
+            @RequestParam(required = false) @Pattern(regexp = "\\d{5}") String accountNumber, Pageable pageable,
             Authentication authentication) {
         return ResponseEntity.ok(new PagedModel<>(
                 notificationService.findByAccount(authentication.getName(), accountNumber, pageable)));

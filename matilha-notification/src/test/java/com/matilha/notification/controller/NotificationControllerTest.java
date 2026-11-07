@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -215,15 +216,34 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.page.totalElements").value(0));
     }
 
+    /**
+     * Sem o accountNumber, a consulta traz as notificações de todas as contas do usuário. Só é seguro porque a
+     * consulta sempre filtra pelo sub do token: antes do filtro pelo dono, isso devolveria o banco inteiro.
+     */
     @Test
-    void shouldReturnProblemDetailWhenAccountNumberIsMissing() throws Exception {
-        mockMvc.perform(get("/notifications").with(user()))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.detail").value(containsString("accountNumber")));
+    void shouldReturnAllNotificationsOfTheUserWhenAccountNumberIsMissing() throws Exception {
+        when(notificationService.findByAccount(eq(ANA), isNull(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(sent(), failed())));
 
-        verify(notificationService, never()).findByAccount(anyString(), anyString(), any(Pageable.class));
+        mockMvc.perform(get("/notifications").with(user()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2));
+
+        verify(notificationService).findByAccount(eq(ANA), isNull(), any(Pageable.class));
+    }
+
+    /** Sem o accountNumber, a paginação e a ordem padrão continuam valendo. */
+    @Test
+    void shouldUseNewestFirstWhenAccountNumberIsMissing() throws Exception {
+        when(notificationService.findByAccount(anyString(), isNull(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/notifications").with(user()))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(notificationService).findByAccount(eq(ANA), isNull(), captor.capture());
+        assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 
     @Test

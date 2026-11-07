@@ -12,4 +12,6 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 
     Page<Notification> findByOwnerIdAndAccountNumber(String ownerId, String accountNumber, Pageable pageable);
 
+    Page<Notification> findByOwnerId(String ownerId, Pageable pageable);
+
 }

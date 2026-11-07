@@ -114,6 +114,34 @@ class NotificationQueryTest {
         assertThat(page.getTotalElements()).isZero();
     }
 
+    /**
+     * Sem a conta, vêm as notificações de todas as contas do usuário, e de nenhuma outra pessoa.
+     * O dono é sorteado, porque o banco é compartilhado e a Ana aparece em outros testes.
+     */
+    @Test
+    void shouldReturnNotificationsOfAllAccountsOfTheOwnerWhenAccountIsMissing() {
+        String owner = UUID.randomUUID().toString();
+        String first = newAccount();
+        String second = String.valueOf(Integer.parseInt(first) + 1);
+        save(first, owner, "first account", MIDDLE);
+        save(second, owner, "second account", NEWEST);
+        save(first, BRUNO, "of bruno", NEWEST);
+
+        Page<NotificationResponseDto> page = notificationService.findByAccount(owner, null, newestFirst(0, 10));
+
+        assertThat(page.getContent())
+                .extracting(NotificationResponseDto::message)
+                .containsExactly("second account", "first account");
+    }
+
+    @Test
+    void shouldReturnEmptyPageWhenOwnerHasNoNotificationsAndAccountIsMissing() {
+        Page<NotificationResponseDto> page = notificationService.findByAccount(UUID.randomUUID().toString(), null,
+                newestFirst(0, 10));
+
+        assertThat(page.getContent()).isEmpty();
+    }
+
     /** As notificações sem dono (anteriores à Fase 4, ou de conta sem dono) não aparecem para ninguém. */
     @Test
     void shouldNotReturnNotificationsWithoutOwner() {
