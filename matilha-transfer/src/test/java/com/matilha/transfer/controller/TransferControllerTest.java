@@ -4,7 +4,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -21,12 +23,19 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import com.matilha.transfer.config.ProblemDetailSecurityHandler;
+import com.matilha.transfer.config.SecurityConfig;
 import com.matilha.transfer.dto.CreateTransferRequestDto;
 import com.matilha.transfer.dto.TransferResponseDto;
 import com.matilha.transfer.entity.FailureCode;
@@ -35,9 +44,15 @@ import com.matilha.transfer.exception.BusinessException;
 import com.matilha.transfer.exception.TransferNotFoundException;
 import com.matilha.transfer.service.TransferService;
 
+/**
+ * O SecurityConfig entra pelo @Import, porque o @WebMvcTest não carrega classes @Configuration.
+ * As requisições levam um JWT pelo jwt() do spring-security-test; a seção Security testa o que acontece sem ele.
+ */
 @WebMvcTest(TransferController.class)
+@Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class })
 class TransferControllerTest {
 
+    private static final String ANA = "00000000-0000-0000-0003-000000000001";
     private static final UUID KEY = UUID.fromString("3f1c2a9e-7b4d-4c1a-9e2f-5a6b7c8d9e01");
     private static final UUID TRANSFER_ID = UUID.fromString("8a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d");
 
@@ -55,6 +70,13 @@ class TransferControllerTest {
     @MockitoBean
     private TransferService transferService;
 
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
+
+    private static JwtRequestPostProcessor user() {
+        return jwt().jwt(token -> token.subject(ANA));
+    }
+
     private static TransferResponseDto response(TransferStatus status) {
         return new TransferResponseDto(TRANSFER_ID, status, "10001", "10002", new BigDecimal("250.50"),
                 null, null, Instant.parse("2026-10-26T12:00:00Z"));
@@ -71,6 +93,7 @@ class TransferControllerTest {
 
     private static MockHttpServletRequestBuilder postTransfer(String body) {
         return post("/transfers")
+                .with(user())
                 .header("Idempotency-Key", KEY.toString())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body);
@@ -172,7 +195,7 @@ class TransferControllerTest {
         void shouldAcceptHeaderNameInAnyCase() throws Exception {
             when(transferService.create(eq(KEY), any())).thenReturn(response(TransferStatus.COMPLETED));
 
-            mockMvc.perform(post("/transfers")
+            mockMvc.perform(post("/transfers").with(user())
                     .header("idempotency-key", KEY.toString())
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(VALID_REQUEST))
@@ -213,7 +236,7 @@ class TransferControllerTest {
 
         @Test
         void shouldRejectMissingHeader() throws Exception {
-            mockMvc.perform(post("/transfers")
+            mockMvc.perform(post("/transfers").with(user())
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(VALID_REQUEST))
                     .andExpect(status().isBadRequest());
@@ -224,7 +247,7 @@ class TransferControllerTest {
         @ParameterizedTest
         @ValueSource(strings = { "abc", "123", "3f1c2a9e-7b4d" })
         void shouldRejectHeaderThatIsNotUuid(String key) throws Exception {
-            mockMvc.perform(post("/transfers")
+            mockMvc.perform(post("/transfers").with(user())
                     .header("Idempotency-Key", key)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(VALID_REQUEST))
@@ -281,7 +304,7 @@ class TransferControllerTest {
         void shouldReturnTransfer() throws Exception {
             when(transferService.findById(TRANSFER_ID)).thenReturn(response(TransferStatus.PENDING));
 
-            mockMvc.perform(get("/transfers/{id}", TRANSFER_ID))
+            mockMvc.perform(get("/transfers/{id}", TRANSFER_ID).with(user()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.id").value(TRANSFER_ID.toString()))
                     .andExpect(jsonPath("$.status").value("PENDING"));
@@ -292,7 +315,7 @@ class TransferControllerTest {
             when(transferService.findById(TRANSFER_ID))
                     .thenReturn(failed(FailureCode.ACCOUNT_INACTIVE, "Account is not active"));
 
-            mockMvc.perform(get("/transfers/{id}", TRANSFER_ID))
+            mockMvc.perform(get("/transfers/{id}", TRANSFER_ID).with(user()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value("FAILED"))
                     .andExpect(jsonPath("$.failureCode").value("ACCOUNT_INACTIVE"))
@@ -303,17 +326,69 @@ class TransferControllerTest {
         void shouldReturnNotFound() throws Exception {
             when(transferService.findById(TRANSFER_ID)).thenThrow(new TransferNotFoundException(TRANSFER_ID));
 
-            mockMvc.perform(get("/transfers/{id}", TRANSFER_ID))
+            mockMvc.perform(get("/transfers/{id}", TRANSFER_ID).with(user()))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.detail").value("Transfer not found: " + TRANSFER_ID));
         }
 
         @Test
         void shouldRejectIdThatIsNotUuid() throws Exception {
-            mockMvc.perform(get("/transfers/{id}", "abc"))
+            mockMvc.perform(get("/transfers/{id}", "abc").with(user()))
                     .andExpect(status().isBadRequest());
 
             verify(transferService, never()).findById(any());
+        }
+    }
+
+    @Nested
+    class Security {
+
+        @Test
+        void shouldReturnUnauthorizedWithoutToken() throws Exception {
+            mockMvc.perform(get("/transfers/{id}", TRANSFER_ID))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"))
+                    .andExpect(jsonPath("$.status").value(401))
+                    .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+
+            verify(transferService, never()).findById(any());
+        }
+
+        /** Sem token, o POST recebe 401 e não 403: o CSRF está desligado, porque não existe sessão nem cookie. */
+        @Test
+        void shouldReturnUnauthorizedForPostWithoutToken() throws Exception {
+            mockMvc.perform(post("/transfers")
+                    .header("Idempotency-Key", KEY.toString())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(VALID_REQUEST))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+
+            verify(transferService, never()).create(any(), any());
+        }
+
+        /** O token passa pelo JwtDecoder (mockado) e pelo filtro de verdade, e nenhuma sessão HTTP é criada. */
+        @Test
+        void shouldAuthenticateBearerTokenWithoutCreatingSession() throws Exception {
+            when(jwtDecoder.decode("keycloak-token")).thenReturn(Jwt.withTokenValue("keycloak-token")
+                    .header("alg", "RS256")
+                    .subject(ANA)
+                    .issuedAt(Instant.now())
+                    .expiresAt(Instant.now().plusSeconds(300))
+                    .build());
+            when(transferService.findById(TRANSFER_ID)).thenReturn(response(TransferStatus.COMPLETED));
+
+            mockMvc.perform(get("/transfers/{id}", TRANSFER_ID).header(HttpHeaders.AUTHORIZATION, "Bearer keycloak-token"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE))
+                    .andExpect(result -> assertThat(result.getRequest().getSession(false)).isNull());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = { "/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness" })
+        void shouldNotRequireTokenForHealth(String path) throws Exception {
+            mockMvc.perform(get(path))
+                    .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
         }
     }
 }
