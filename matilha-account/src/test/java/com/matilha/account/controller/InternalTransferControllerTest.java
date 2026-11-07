@@ -42,10 +42,12 @@ import com.matilha.account.service.InternalTransferService;
 class InternalTransferControllerTest {
 
     private static final UUID TRANSFER_ID = UUID.fromString("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
+    private static final String OWNER = "00000000-0000-0000-0003-000000000001";
 
     private static final String VALID_REQUEST = """
             {
               "transferId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+              "ownerId": "00000000-0000-0000-0003-000000000001",
               "sourceAccountNumber": "12345",
               "targetAccountNumber": "67890",
               "amount": 150.00
@@ -96,7 +98,7 @@ class InternalTransferControllerTest {
                     .andExpect(status().isOk());
 
             verify(transferService).transfer(
-                    new InternalTransferRequestDto(TRANSFER_ID, "12345", "67890", new BigDecimal("150.00")));
+                    new InternalTransferRequestDto(TRANSFER_ID, OWNER, "12345", "67890", new BigDecimal("150.00")));
         }
     }
 
@@ -110,9 +112,23 @@ class InternalTransferControllerTest {
                     .content("{}"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.transferId").exists())
+                    .andExpect(jsonPath("$.errors.ownerId").exists())
                     .andExpect(jsonPath("$.errors.sourceAccountNumber").exists())
                     .andExpect(jsonPath("$.errors.targetAccountNumber").exists())
                     .andExpect(jsonPath("$.errors.amount").exists());
+
+            verify(transferService, never()).transfer(any());
+        }
+
+        /** Sem o dono, o account não tem como conferir a conta de origem: o pedido é inválido, nunca "sem conferência". */
+        @ParameterizedTest
+        @ValueSource(strings = { "null", "\"\"", "\"   \"" })
+        void shouldReturnBadRequestWhenOwnerIdIsMissing(String ownerId) throws Exception {
+            mockMvc.perform(post("/internal/transfers")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestWith("ownerId", ownerId)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors.ownerId").exists());
 
             verify(transferService, never()).transfer(any());
         }

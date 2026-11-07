@@ -54,6 +54,10 @@ public class InternalTransferService {
             source = lockAccount(sourceNumber);
         }
 
+        if (!source.isOwnedBy(request.ownerId())) {
+            throw new AccountNotFoundException(sourceNumber);
+        }
+
         source.withdraw(request.amount());
         target.deposit(request.amount());
 

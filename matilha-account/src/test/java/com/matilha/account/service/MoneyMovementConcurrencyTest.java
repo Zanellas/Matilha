@@ -72,7 +72,7 @@ class MoneyMovementConcurrencyTest {
     }
 
     private static InternalTransferRequestDto transfer(UUID transferId, String source, String target, String amount) {
-        return new InternalTransferRequestDto(transferId, source, target, new BigDecimal(amount));
+        return new InternalTransferRequestDto(transferId, "owner-" + source, source, target, new BigDecimal(amount));
     }
 
     /**

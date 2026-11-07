@@ -23,6 +23,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.matilha.account.dto.InternalTransferRequestDto;
 import com.matilha.account.dto.InternalTransferResponseDto;
@@ -61,8 +62,13 @@ class InternalTransferServiceTest {
         return account;
     }
 
+    /** Pedido feito pelo dono da conta de origem: o accountWithBalance cria cada conta com o dono "owner-" + número. */
     private static InternalTransferRequestDto request(String source, String target, String amount) {
-        return new InternalTransferRequestDto(TRANSFER_ID, source, target, new BigDecimal(amount));
+        return requestBy("owner-" + source, source, target, amount);
+    }
+
+    private static InternalTransferRequestDto requestBy(String ownerId, String source, String target, String amount) {
+        return new InternalTransferRequestDto(TRANSFER_ID, ownerId, source, target, new BigDecimal(amount));
     }
 
     private void givenNewTransfer() {
@@ -162,6 +168,56 @@ class InternalTransferServiceTest {
             transferService.transfer(request(SOURCE, TARGET, "150.00"));
 
             verify(accountRepository, never()).findByAccountNumber(anyString());
+        }
+    }
+
+    /**
+     * Só a conta de origem precisa ser de quem pediu: dá para mandar dinheiro para qualquer conta, mas não tirar
+     * de uma conta de outra pessoa. A recusa é a mesma de uma conta inexistente ("como se não existisse").
+     */
+    @Nested
+    class Ownership {
+
+        @Test
+        void shouldRejectTransferFromAccountOfAnotherOwner() {
+            Account source = accountWithBalance(SOURCE, "500.00");
+            Account target = accountWithBalance(TARGET, "100.00");
+            givenNewTransfer();
+            givenLockedAccounts(source, target);
+
+            assertThatThrownBy(() -> transferService.transfer(requestBy("owner-" + TARGET, SOURCE, TARGET, "150.00")))
+                    .isInstanceOf(AccountNotFoundException.class)
+                    .hasMessage("Account 12345 not found");
+            assertThat(source.getBalance()).isEqualByComparingTo("500.00");
+            assertThat(target.getBalance()).isEqualByComparingTo("100.00");
+            verify(accountMovementRepository, never()).saveAll(anyIterable());
+        }
+
+        @Test
+        void shouldAllowTransferToAccountOfAnotherOwner() {
+            Account source = accountWithBalance(SOURCE, "500.00");
+            Account target = accountWithBalance(TARGET, "100.00");
+            givenNewTransfer();
+            givenLockedAccounts(source, target);
+
+            transferService.transfer(requestBy("owner-" + SOURCE, SOURCE, TARGET, "150.00"));
+
+            assertThat(target.isOwnedBy("owner-" + SOURCE)).isFalse();
+            assertThat(target.getBalance()).isEqualByComparingTo("250.00");
+        }
+
+        /** Uma conta criada antes da Fase 4, sem dono, não é de ninguém: ninguém transfere a partir dela. */
+        @Test
+        void shouldRejectTransferFromAccountWithoutOwner() {
+            Account source = accountWithBalance(SOURCE, "500.00");
+            ReflectionTestUtils.setField(source, "ownerId", null);
+            givenNewTransfer();
+            givenLockedAccounts(source, accountWithBalance(TARGET, "0"));
+
+            assertThatThrownBy(() -> transferService.transfer(requestBy("owner-" + SOURCE, SOURCE, TARGET, "10.00")))
+                    .isInstanceOf(AccountNotFoundException.class);
+            assertThat(source.getBalance()).isEqualByComparingTo("500.00");
+            verify(accountMovementRepository, never()).saveAll(anyIterable());
         }
     }
 

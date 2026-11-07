@@ -128,6 +128,10 @@ public class Account {
         this.status = AccountStatus.CLOSED;
     }
 
+    public boolean isOwnedBy(String userId) {
+        return ownerId != null && ownerId.equals(userId);
+    }
+
     private void requireActive() {
         if (status != AccountStatus.ACTIVE) {
             throw new BusinessException(ErrorCode.ACCOUNT_INACTIVE, "Account is not active");
