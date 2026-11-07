@@ -8,8 +8,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -28,28 +30,46 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.matilha.notification.config.PageableConfig;
+import com.matilha.notification.config.ProblemDetailSecurityHandler;
+import com.matilha.notification.config.SecurityConfig;
 import com.matilha.notification.dto.NotificationResponseDto;
 import com.matilha.notification.entity.FailureCode;
 import com.matilha.notification.entity.NotificationType;
 import com.matilha.notification.service.NotificationService;
 
-/** O @WebMvcTest não carrega classes @Configuration; o PageableConfig entra pelo @Import para valer a ordem padrão. */
+/**
+ * O @WebMvcTest não carrega classes @Configuration: o PageableConfig e o SecurityConfig entram pelo @Import,
+ * para valerem a ordem padrão e as regras de segurança de verdade.
+ * As requisições levam um JWT pelo jwt() do spring-security-test; os testes de segurança no fim testam sem ele.
+ */
 @WebMvcTest(NotificationController.class)
-@Import(PageableConfig.class)
+@Import({ PageableConfig.class, SecurityConfig.class, ProblemDetailSecurityHandler.class })
 class NotificationControllerTest {
 
     private static final String ACCOUNT = "10001";
+    private static final String ANA = "00000000-0000-0000-0003-000000000001";
 
     @Autowired
     private MockMvc mockMvc;
 
     @MockitoBean
     private NotificationService notificationService;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
+
+    private static JwtRequestPostProcessor user() {
+        return jwt().jwt(token -> token.subject(ANA));
+    }
 
     private static NotificationResponseDto sent() {
         return new NotificationResponseDto(UUID.randomUUID(), UUID.randomUUID(), ACCOUNT,
@@ -69,7 +89,7 @@ class NotificationControllerTest {
         when(notificationService.findByAccount(eq(ACCOUNT), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(sent(), failed()), pageable, 5));
 
-        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT).param("page", "0").param("size", "2"))
+        mockMvc.perform(get("/notifications").with(user()).param("accountNumber", ACCOUNT).param("page", "0").param("size", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(2))
                 .andExpect(jsonPath("$.content[0].accountNumber").value(ACCOUNT))
@@ -90,7 +110,7 @@ class NotificationControllerTest {
         when(notificationService.findByAccount(anyString(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(sent())));
 
-        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT))
+        mockMvc.perform(get("/notifications").with(user()).param("accountNumber", ACCOUNT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].eventId").doesNotExist());
     }
@@ -100,7 +120,7 @@ class NotificationControllerTest {
         when(notificationService.findByAccount(anyString(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT).param("page", "2").param("size", "5"))
+        mockMvc.perform(get("/notifications").with(user()).param("accountNumber", ACCOUNT).param("page", "2").param("size", "5"))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
@@ -115,7 +135,7 @@ class NotificationControllerTest {
         when(notificationService.findByAccount(anyString(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT))
+        mockMvc.perform(get("/notifications").with(user()).param("accountNumber", ACCOUNT))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
@@ -131,7 +151,7 @@ class NotificationControllerTest {
         when(notificationService.findByAccount(anyString(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT).param("page", "1").param("size", "5"))
+        mockMvc.perform(get("/notifications").with(user()).param("accountNumber", ACCOUNT).param("page", "1").param("size", "5"))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
@@ -148,7 +168,7 @@ class NotificationControllerTest {
         when(notificationService.findByAccount(anyString(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT).param("size", "5000"))
+        mockMvc.perform(get("/notifications").with(user()).param("accountNumber", ACCOUNT).param("size", "5000"))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
@@ -160,7 +180,7 @@ class NotificationControllerTest {
     @ParameterizedTest
     @ValueSource(strings = { "abc", "1234", "123456", "1000a", " " })
     void shouldReturnProblemDetailForInvalidAccountNumber(String accountNumber) throws Exception {
-        mockMvc.perform(get("/notifications").param("accountNumber", accountNumber))
+        mockMvc.perform(get("/notifications").with(user()).param("accountNumber", accountNumber))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(400));
@@ -174,7 +194,7 @@ class NotificationControllerTest {
         when(notificationService.findByAccount(anyString(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        mockMvc.perform(get("/notifications").param("accountNumber", "99999"))
+        mockMvc.perform(get("/notifications").with(user()).param("accountNumber", "99999"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(0))
                 .andExpect(jsonPath("$.page.totalElements").value(0));
@@ -182,7 +202,7 @@ class NotificationControllerTest {
 
     @Test
     void shouldReturnProblemDetailWhenAccountNumberIsMissing() throws Exception {
-        mockMvc.perform(get("/notifications"))
+        mockMvc.perform(get("/notifications").with(user()))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(400))
@@ -196,11 +216,57 @@ class NotificationControllerTest {
         when(notificationService.findByAccount(anyString(), any(Pageable.class)))
                 .thenThrow(new IllegalStateException("connection to db-notification refused"));
 
-        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT))
+        mockMvc.perform(get("/notifications").with(user()).param("accountNumber", ACCOUNT))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.detail").value("An unexpected error occurred"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(containsString("db-notification"))));
+    }
+
+    @Test
+    void shouldReturnUnauthorizedWithoutToken() throws Exception {
+        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+
+        verify(notificationService, never()).findByAccount(anyString(), any(Pageable.class));
+    }
+
+    /** Sem token, a validação nem roda: o 401 vem antes do 400 do accountNumber inválido. */
+    @Test
+    void shouldReturnUnauthorizedBeforeValidatingParameters() throws Exception {
+        mockMvc.perform(get("/notifications").param("accountNumber", "abc"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    /** O token passa pelo JwtDecoder (mockado) e pelo filtro de verdade, e nenhuma sessão HTTP é criada. */
+    @Test
+    void shouldAuthenticateBearerTokenWithoutCreatingSession() throws Exception {
+        when(jwtDecoder.decode("keycloak-token")).thenReturn(Jwt.withTokenValue("keycloak-token")
+                .header("alg", "RS256")
+                .subject(ANA)
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(300))
+                .build());
+        when(notificationService.findByAccount(anyString(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/notifications").param("accountNumber", ACCOUNT)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer keycloak-token"))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE))
+                .andExpect(result -> assertThat(result.getRequest().getSession(false)).isNull());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness" })
+    void shouldNotRequireTokenForHealth(String path) throws Exception {
+        mockMvc.perform(get(path))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
     }
 }
