@@ -73,7 +73,8 @@ class InternalTransferControllerTest {
         @Test
         void shouldReturnOkWithResultingBalances() throws Exception {
             when(transferService.transfer(any())).thenReturn(new InternalTransferResponseDto(TRANSFER_ID,
-                    "12345", new BigDecimal("350.00"), "67890", new BigDecimal("250.00"), new BigDecimal("150.00")));
+                    "12345", new BigDecimal("350.00"), "67890", new BigDecimal("250.00"), new BigDecimal("150.00"),
+                    "00000000-0000-0000-0003-000000000002"));
 
             mockMvc.perform(post("/internal/transfers")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -84,13 +85,14 @@ class InternalTransferControllerTest {
                     .andExpect(jsonPath("$.sourceBalanceAfter").value(350.00))
                     .andExpect(jsonPath("$.targetAccountNumber").value("67890"))
                     .andExpect(jsonPath("$.targetBalanceAfter").value(250.00))
-                    .andExpect(jsonPath("$.amount").value(150.00));
+                    .andExpect(jsonPath("$.amount").value(150.00))
+                    .andExpect(jsonPath("$.targetOwnerId").value("00000000-0000-0000-0003-000000000002"));
         }
 
         @Test
         void shouldPassRequestBodyToService() throws Exception {
             when(transferService.transfer(any())).thenReturn(new InternalTransferResponseDto(TRANSFER_ID,
-                    "12345", BigDecimal.ZERO, "67890", BigDecimal.ZERO, new BigDecimal("150.00")));
+                    "12345", BigDecimal.ZERO, "67890", BigDecimal.ZERO, new BigDecimal("150.00"), null));
 
             mockMvc.perform(post("/internal/transfers")
                     .contentType(MediaType.APPLICATION_JSON)

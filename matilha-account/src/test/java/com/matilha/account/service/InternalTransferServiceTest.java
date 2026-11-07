@@ -149,6 +149,31 @@ class InternalTransferServiceTest {
             assertThat(response.amount()).isEqualByComparingTo("150.00");
         }
 
+        /** O dono do destino vai na resposta: o transfer o põe no evento, e o notification avisa a pessoa certa. */
+        @Test
+        void shouldReturnTheTargetOwner() {
+            givenNewTransfer();
+            givenLockedAccounts(accountWithBalance(SOURCE, "500.00"), accountWithBalance(TARGET, "100.00"));
+
+            InternalTransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150.00"));
+
+            assertThat(response.targetOwnerId()).isEqualTo("owner-" + TARGET);
+        }
+
+        /** Destino sem dono (conta criada antes da Fase 4): o crédito acontece, mas ninguém é avisado. */
+        @Test
+        void shouldReturnNullTargetOwnerWhenTargetHasNoOwner() {
+            Account target = accountWithBalance(TARGET, "100.00");
+            ReflectionTestUtils.setField(target, "ownerId", null);
+            givenNewTransfer();
+            givenLockedAccounts(accountWithBalance(SOURCE, "500.00"), target);
+
+            InternalTransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150.00"));
+
+            assertThat(response.targetOwnerId()).isNull();
+            assertThat(target.getBalance()).isEqualByComparingTo("250.00");
+        }
+
         @Test
         void shouldAllowTransferringEntireBalance() {
             Account source = accountWithBalance(SOURCE, "150.00");
@@ -264,7 +289,7 @@ class InternalTransferServiceTest {
             InternalTransferResponseDto response = transferService.transfer(request(SOURCE, TARGET, "150.00"));
 
             assertThat(response).isEqualTo(new InternalTransferResponseDto(TRANSFER_ID,
-                    SOURCE, new BigDecimal("350.00"), TARGET, new BigDecimal("250.00"), amount));
+                    SOURCE, new BigDecimal("350.00"), TARGET, new BigDecimal("250.00"), amount, "owner-" + TARGET));
         }
 
         @Test

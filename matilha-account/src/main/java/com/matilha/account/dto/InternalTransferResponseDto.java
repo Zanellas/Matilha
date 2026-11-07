@@ -9,5 +9,6 @@ public record InternalTransferResponseDto(
         BigDecimal sourceBalanceAfter,
         String targetAccountNumber,
         BigDecimal targetBalanceAfter,
-        BigDecimal amount) {
+        BigDecimal amount,
+        String targetOwnerId) {
 }

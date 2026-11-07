@@ -86,7 +86,8 @@ public class InternalTransferService {
                 transferId,
                 debit.getAccount().getAccountNumber(), debit.getBalanceAfter(),
                 credit.getAccount().getAccountNumber(), credit.getBalanceAfter(),
-                debit.getAmount());
+                debit.getAmount(),
+                credit.getAccount().getOwnerId());
     }
 
     private AccountMovement findByType(List<AccountMovement> movements, MovementType type) {
