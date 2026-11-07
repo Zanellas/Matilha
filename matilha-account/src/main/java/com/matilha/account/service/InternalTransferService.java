@@ -28,7 +28,8 @@ public class InternalTransferService {
 
     @Transactional
     public InternalTransferResponseDto transfer(InternalTransferRequestDto request) {
-        List<AccountMovement> existing = accountMovementRepository.findByOperationIdAndOperation(request.transferId(), MovementOperation.TRANSFER);
+        List<AccountMovement> existing = accountMovementRepository.findByOperationIdAndOperation(request.transferId(),
+                MovementOperation.TRANSFER);
         if (!existing.isEmpty()) {
             InternalTransferResponseDto previous = toResponse(request.transferId(), existing);
             if (!isSameTransfer(previous, request)) {

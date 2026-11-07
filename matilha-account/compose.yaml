@@ -28,6 +28,7 @@ services:
       ACCOUNT_DB_URL: jdbc:postgresql://account-db:5432/${ACCOUNT_DB_NAME:?defina ACCOUNT_DB_NAME no .env}
       ACCOUNT_DB_USERNAME: ${ACCOUNT_DB_USERNAME:?defina ACCOUNT_DB_USERNAME no .env}
       ACCOUNT_DB_PASSWORD: ${ACCOUNT_DB_PASSWORD:?defina ACCOUNT_DB_PASSWORD no .env}
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/matilha/protocol/openid-connect/certs
     depends_on:
       account-db:
         condition: service_healthy

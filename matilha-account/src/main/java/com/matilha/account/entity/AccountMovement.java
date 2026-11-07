@@ -27,9 +27,8 @@ import lombok.ToString;
 @Getter
 @ToString
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(name = "account_movements", uniqueConstraints = @UniqueConstraint(
-        name = "uk_account_movements_operation_type",
-        columnNames = { "operation_id", "type" }))
+@Table(name = "account_movements", uniqueConstraints = @UniqueConstraint(name = "uk_account_movements_operation_type", columnNames = {
+        "operation_id", "type" }))
 public class AccountMovement {
 
     @Id
