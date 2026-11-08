@@ -27,6 +27,12 @@ kubeconfig
 # Exports do realm podem conter client secrets e usuários.
 **/keycloak/**/*-users-*.json
 
+### Instruções locais de ferramentas ###
+# As regras do projeto ficam em docs/convencoes.md. Estes arquivos só apontam para ele.
+CLAUDE.md
+CLAUDE.local.md
+.github/copilot-instructions.md
+
 ### Logs ###
 *.log
 logs/
