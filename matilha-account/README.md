@@ -301,6 +301,8 @@ O perfil `dev` carrega `db/seed/R__seed_dev_accounts.sql`:
 
 Os donos são os ids fixos dos usuários de demonstração do [realm](../keycloak/realm-matilha.json). O seed os grava com `UPDATE ... WHERE owner_id IS NULL`, e não no `INSERT`, para funcionar também num banco que já tinha as contas antes da coluna existir. A coluna vem da V3, que roda em produção, por isso os ids de demonstração ficam só no seed. As contas sem dono só aparecem para o admin, e podem receber transferências, mas não enviar.
 
+Os CPFs do seed são inválidos de propósito: `11111111111` a `55555555555`, com os onze dígitos repetidos. Um CPF válido gerado para exemplo pode pertencer a uma pessoa real, e este repositório é público. O seed entra direto no banco pelo Flyway, sem passar pelo `@CPF` do `CreateAccountRequestDto`, e a entidade só exige os 11 dígitos. Já uma conta criada pela API precisa de um CPF válido. Por isso os testes usam os CPFs de exemplo amplamente publicados, como `529.982.247-25`.
+
 ## Testes
 
 ```bash
